@@ -8,7 +8,7 @@ contact_links:
     about: Read the full documentation and workflows
   - name: 🔒 Security Vulnerability
     url: https://support.checkmarx.com/CheckmarxCustomerServiceCommunity/s/login/
-    about: Report security vulnerabilities privately via the Checkmarx Support Portal (see SECURITY.md)
+    about: Report security vulnerabilities privately via the Checkmarx Support Portal
   - name: 🆘 Checkmarx Support
     url: https://support.checkmarx.com/CheckmarxCustomerServiceCommunity/s/
     about: Get help from Checkmarx support team

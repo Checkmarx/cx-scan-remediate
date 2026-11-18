@@ -34,7 +34,7 @@ We welcome contributions. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and our
 
 ## Security
 
-Please **do not** report security vulnerabilities in public issues. See [SECURITY.md](SECURITY.md).
+Please **do not** report security vulnerabilities in public issues. See [Checkmarx Security Policy](https://github.com/Checkmarx/.github/blob/main/SECURITY.md).
 
 ## Support
 

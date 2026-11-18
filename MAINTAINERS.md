@@ -16,7 +16,7 @@ For questions about this project that are not bugs, feature requests or security
 maintainers via the [Checkmarx Support Portal](https://support.checkmarx.com/CheckmarxCustomerServiceCommunity/s/login/).
 
 - Bugs and feature requests: [GitHub Issues](https://github.com/Checkmarx/cx-scan-remediate/issues)
-- Security vulnerabilities: see [SECURITY.md](SECURITY.md) (do not open a public issue)
+- Security vulnerabilities: see [Checkmarx Security Policy](https://github.com/Checkmarx/.github/blob/main/SECURITY.md) (do not open a public issue)
 - Product support: [Checkmarx Support Portal](https://support.checkmarx.com/CheckmarxCustomerServiceCommunity/s/)
 
 ## Responsibilities

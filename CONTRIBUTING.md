@@ -115,7 +115,7 @@ The default branch is protected. Every change must be merged through a pull requ
 
 ## Security Issues
 
-Do not report security vulnerabilities in public issues or PRs. Follow [SECURITY.md](SECURITY.md).
+Do not report security vulnerabilities in public issues or PRs. Follow [Checkmarx Security Policy](https://github.com/Checkmarx/.github/blob/main/SECURITY.md).
 
 ## Resources
 

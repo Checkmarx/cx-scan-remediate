@@ -1,0 +1,42 @@
+name: Checkmarx One Scan
+
+# Replaces the ad-hoc Checkov job: IaC findings come from the org's Checkmarx
+# One tenant (iac-security engine) alongside SAST/SCA/secret detection, so this
+# stack shows up in the same dashboards as everything else.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+
+permissions: {}            # workflow default — deny all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cx-one-scan:
+    name: Checkmarx One Scan
+    runs-on: cx-private-ubuntu-x64
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run Checkmarx One scan
+        uses: CheckmarxDev/gh-actions-library/workflows/services/security/cx-one-scan@4ad5058e29c0b7f22c4b14f6a12073795e399015 # AST-164067
+        with:
+          base-uri:         ${{ secrets.AST_RND_SCANS_BASE_URI }} # zizmor: ignore[secrets-outside-env] Scan secrets have not been moved to environments yet.
+          cx-tenant:        ${{ secrets.AST_RND_SCANS_TENANT }} # zizmor: ignore[secrets-outside-env] Scan secrets have not been moved to environments yet.
+          cx-client-id:     ${{ secrets.AST_RND_SCANS_CLIENT_ID }} # zizmor: ignore[secrets-outside-env] Scan secrets have not been moved to environments yet.
+          cx-client-secret: ${{ secrets.AST_RND_SCANS_CLIENT_SECRET }} # zizmor: ignore[secrets-outside-env] Scan secrets have not been moved to environments yet.
+          additional-params: --tags ${{ github.event.repository.name }}

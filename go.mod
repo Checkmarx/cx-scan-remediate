@@ -1,4 +1,4 @@
-module cxscanremediate
+module github.com/Checkmarx/cx-scan-remediate
 
 go 1.26.3
 

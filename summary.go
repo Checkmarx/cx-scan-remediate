@@ -110,21 +110,16 @@ func formatRemaining(counts []engineCount) string {
 	return strings.Join(parts, ", ")
 }
 
-// summary of the report, set once it is parsed so finish can log it on every exit path.
-var (
-	summaryResults    *Cx1ClientGo.ScanResultSet
-	summarySeverities map[string]bool
-	summaryEngines    enginesInScope
-)
-
-func logRemainingSummary(logger *logrus.Logger) {
-	if summaryResults == nil {
+// logRemainingSummary logs what the run did and what in the report still counts against the
+// threshold. It logs nothing if the report has not been read (results is nil).
+func logRemainingSummary(logger *logrus.Logger, results *Cx1ClientGo.ScanResultSet, severities map[string]bool, engines enginesInScope, index []resultIndex, c runCounters) {
+	if results == nil {
 		return
 	}
-	for _, line := range describeRun(summaryIndex, run) {
+	for _, line := range describeRun(index, c) {
 		logger.Info(line)
 	}
-	counts := remainingByEngine(summaryResults, summarySeverities, summaryEngines)
+	counts := remainingByEngine(results, severities, engines)
 	logger.Warnf("Results from the scan report still counting against the threshold (--severities matches, state not NOT_EXPLOITABLE; PROPOSED_NOT_EXPLOITABLE still counts): %s", formatRemaining(counts))
 }
 
@@ -134,11 +129,6 @@ type runCounters struct {
 	BranchExists map[string]bool // verified findings skipped because their pull request branch already exists
 	PRsOpened    int
 }
-
-var (
-	run          = runCounters{Requested: map[string]bool{}, BranchExists: map[string]bool{}}
-	summaryIndex []resultIndex // the findings this tool handles; their states are the current ones
-)
 
 func findingKey(f *resultIndex) string { return f.Engine + "/" + f.AlternateID }
 

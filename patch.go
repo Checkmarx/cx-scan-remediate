@@ -30,7 +30,8 @@ type patchedFile struct {
 }
 
 // applyRemediationInMemory computes the result of applying a remediation to the source tree
-// rooted at baseDir, without modifying baseDir. File-change diffs are applied with "git apply"
+// rooted at baseDir, without modifying baseDir. With keepTemp (--keep-temp) the scratch directory,
+// which holds copies of the patched source files and the diffs, is kept instead of deleted. File-change diffs are applied with "git apply"
 // inside a throwaway copy of just the files they touch; generated test files come back from
 // the platform as full content and are used as-is.
 //
@@ -40,13 +41,13 @@ type patchedFile struct {
 //
 // The remediation is all-or-nothing: if any diff cannot be applied an error is returned and
 // nothing is produced, since a half-applied fix is worse than none.
-func applyRemediationInMemory(logger *logrus.Logger, details Cx1ClientGo.AIRemediationDetails, baseDir string) ([]patchedFile, error) {
+func applyRemediationInMemory(logger *logrus.Logger, details Cx1ClientGo.AIRemediationDetails, baseDir string, keepTemp bool) ([]patchedFile, error) {
 	root, err := os.MkdirTemp("", "cx-remediate-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create scratch directory: %w", err)
 	}
 	defer func() {
-		if *keepTemp {
+		if keepTemp {
 			logger.Infof("Scratch directory kept (--keep-temp): %s", root)
 		} else {
 			os.RemoveAll(root)
@@ -230,7 +231,3 @@ func cleanRepoPath(p string) (string, error) {
 	}
 	return clean, nil
 }
-
-// keepTemp is the --keep-temp flag: keep each remediation's scratch directory, which holds copies
-// of the patched source files and the diffs, instead of deleting it.
-var keepTemp = new(bool)

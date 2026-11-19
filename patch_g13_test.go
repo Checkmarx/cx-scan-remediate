@@ -21,7 +21,7 @@ func TestApplyToCRLFSource(t *testing.T) {
 	writeFile(t, base, "a.txt", "one\r\ntwo\r\nthree\r\n")
 
 	files, err := applyRemediationInMemory(testLogger(), remediationWith(fileChange("a.txt",
-		"--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n")), base)
+		"--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n")), base, false)
 	if err != nil {
 		t.Fatalf("LF diff should apply to a CRLF file: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestGitConfigIsIgnored(t *testing.T) {
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "0")
 
 	files, err := applyRemediationInMemory(testLogger(), remediationWith(fileChange("new.txt",
-		"--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1,2 @@\n+x\n+y\n")), t.TempDir())
+		"--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1,2 @@\n+x\n+y\n")), t.TempDir(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestApplyWithoutPathPrefix(t *testing.T) {
 	writeFile(t, base, "pom.xml", "a\nb\nc\n")
 
 	files, err := applyRemediationInMemory(testLogger(), remediationWith(fileChange("pom.xml",
-		"--- pom.xml\n+++ pom.xml\n@@ -1,3 +1,3 @@\n a\n-b\n+B\n c\n")), base)
+		"--- pom.xml\n+++ pom.xml\n@@ -1,3 +1,3 @@\n a\n-b\n+B\n c\n")), base, false)
 	if err != nil {
 		t.Fatalf("a bare-path diff should apply: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestExecutableBitIsKept(t *testing.T) {
 
 	for path, want := range map[string]bool{"run.sh": true, "plain.txt": false} {
 		files, err := applyRemediationInMemory(testLogger(), remediationWith(fileChange(path,
-			"--- a/"+path+"\n+++ b/"+path+"\n@@ -1 +1 @@\n-"+strings.TrimSpace(readFile(t, base, path))+"\n+changed\n")), base)
+			"--- a/"+path+"\n+++ b/"+path+"\n@@ -1 +1 @@\n-"+strings.TrimSpace(readFile(t, base, path))+"\n+changed\n")), base, false)
 		if err != nil {
 			t.Fatal(err)
 		}

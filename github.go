@@ -271,17 +271,17 @@ func githubTarget(pr prOptions) (*github.Client, string, string, error) {
 }
 
 // publishRemediationPR opens a GitHub pull request containing exactly the files produced by
-// applyRemediationInMemory.
-func publishRemediationPR(logger *logrus.Logger, result Cx1ClientGo.AIRemediationResult, finding *resultIndex, applied []patchedFile, pr prOptions, branch string) {
+// applyRemediationInMemory. It reports whether a pull request was opened; failures are recorded in errs.
+func publishRemediationPR(logger *logrus.Logger, errs *errorRecorder, result Cx1ClientGo.AIRemediationResult, finding *resultIndex, applied []patchedFile, pr prOptions, branch string) bool {
 	if len(applied) == 0 {
 		logger.Info("Remediation produced no file changes; skipping pull request creation")
-		return
+		return false
 	}
 
 	client, owner, repo, err := githubTarget(pr)
 	if err != nil {
-		recordError(logger, "Failed to set up GitHub access for %q: %s", pr.Repo, err)
-		return
+		errs.Errorf("Failed to set up GitHub access for %q: %s", pr.Repo, err)
+		return false
 	}
 
 	title, body := buildPRContent(result, finding, findingLink(pr.DeepLink, finding))
@@ -295,12 +295,12 @@ func publishRemediationPR(logger *logrus.Logger, result Cx1ClientGo.AIRemediatio
 		Files:         applied,
 	})
 	if err != nil {
-		recordError(logger, "Failed to publish pull request: %s", err)
-		return
+		errs.Errorf("Failed to publish pull request: %s", err)
+		return false
 	}
 
-	run.PRsOpened++
 	logger.Infof("Created pull request: %s", htmlURL)
+	return true
 }
 
 // maxPRTitle is how long a pull request title may be. GitHub rejects titles over 256 characters;

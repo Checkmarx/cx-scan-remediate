@@ -80,12 +80,12 @@ func TestSameFileRemediationsAreIndependent(t *testing.T) {
 	writeFile(t, base, "pom.xml", pomOriginal)
 
 	first, err := applyRemediationInMemory(testLogger(), remediationWith(
-		pomDiff("    <dependency>log4j 2.14.0</dependency>", "    <dependency>log4j 2.17.1</dependency>")), base)
+		pomDiff("    <dependency>log4j 2.14.0</dependency>", "    <dependency>log4j 2.17.1</dependency>")), base, false)
 	if err != nil {
 		t.Fatalf("first remediation: %v", err)
 	}
 	second, err := applyRemediationInMemory(testLogger(), remediationWith(
-		pomDiff("    <dependency>snakeyaml 1.20</dependency>", "    <dependency>snakeyaml 2.0</dependency>")), base)
+		pomDiff("    <dependency>snakeyaml 1.20</dependency>", "    <dependency>snakeyaml 2.0</dependency>")), base, false)
 	if err != nil {
 		t.Fatalf("second remediation should not be affected by the first: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestApplyRemediationToleratesLineDrift(t *testing.T) {
 		t.Fatalf("test setup: header not rewritten: %q", fc.Diff)
 	}
 
-	files, err := applyRemediationInMemory(testLogger(), remediationWith(fc), base)
+	files, err := applyRemediationInMemory(testLogger(), remediationWith(fc), base, false)
 	if err != nil {
 		t.Fatalf("drifted diff should still apply: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestApplyRemediationCreatesAndGenerates(t *testing.T) {
 		{FilePath: "src/test/SafeTest.java", FileContent: "class SafeTest {}\n"},
 	}
 
-	files, err := applyRemediationInMemory(testLogger(), details, base)
+	files, err := applyRemediationInMemory(testLogger(), details, base, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestApplyRemediationIsAllOrNothing(t *testing.T) {
 		Diff:     "--- a/pom.xml\n+++ b/pom.xml\n@@ -1,1 +1,1 @@\n-<nothing like this>\n+<anything>\n",
 	}
 
-	files, err := applyRemediationInMemory(testLogger(), remediationWith(good, bad), base)
+	files, err := applyRemediationInMemory(testLogger(), remediationWith(good, bad), base, false)
 	if err == nil || files != nil {
 		t.Fatalf("expected failure with no files, got %v / %v", files, err)
 	}
@@ -186,7 +186,7 @@ func TestApplyRemediationChainsDiffsWithinOneRemediation(t *testing.T) {
 	a := pomDiff("    <dependency>log4j 2.14.0</dependency>", "    <dependency>log4j 2.17.1</dependency>")
 	b := pomDiff("    <dependency>snakeyaml 1.20</dependency>", "    <dependency>snakeyaml 2.0</dependency>")
 
-	files, err := applyRemediationInMemory(testLogger(), remediationWith(a, b), base)
+	files, err := applyRemediationInMemory(testLogger(), remediationWith(a, b), base, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,13 +202,13 @@ func TestApplyRemediationRejectsUnsafePaths(t *testing.T) {
 
 	for _, p := range []string{"../outside.txt", "/etc/passwd", "a/../../b", ""} {
 		fc := Cx1ClientGo.AIRemediationFileChange{FilePath: p, Diff: "--- /dev/null\n+++ b/x\n@@ -0,0 +1 @@\n+x\n"}
-		if _, err := applyRemediationInMemory(testLogger(), remediationWith(fc), base); err == nil {
+		if _, err := applyRemediationInMemory(testLogger(), remediationWith(fc), base, false); err == nil {
 			t.Errorf("file change path %q should have been rejected", p)
 		}
 
 		details := remediationWith()
 		details.Results[0].Data.TestCreation.TestFiles = []Cx1ClientGo.AIRemediationTestFile{{FilePath: p, FileContent: "x"}}
-		if _, err := applyRemediationInMemory(testLogger(), details, base); err == nil {
+		if _, err := applyRemediationInMemory(testLogger(), details, base, false); err == nil {
 			t.Errorf("test file path %q should have been rejected", p)
 		}
 	}

@@ -1,4 +1,4 @@
-package main
+package cx1ai
 
 import (
 	"errors"
@@ -8,17 +8,9 @@ import (
 	"time"
 
 	"github.com/Checkmarx/cx-scan-remediate/internal/findings"
+	"github.com/Checkmarx/cx-scan-remediate/internal/testutil"
 	"github.com/cxpsemea/Cx1ClientGo"
-	"github.com/sirupsen/logrus"
 )
-
-func quietLogger() (*logrus.Logger, *strings.Builder) {
-	var out strings.Builder
-	l := logrus.New()
-	l.SetOutput(&out)
-	l.SetLevel(logrus.DebugLevel)
-	return l, &out
-}
 
 func scaSet(states map[string]string) Cx1ClientGo.ScanResultSet {
 	var rs Cx1ClientGo.ScanResultSet
@@ -29,7 +21,7 @@ func scaSet(states map[string]string) Cx1ClientGo.ScanResultSet {
 }
 
 func TestRefreshStatesRetriesOnceOnMismatch(t *testing.T) {
-	logger, out := quietLogger()
+	logger, out := testutil.QuietLogger()
 	index := []findings.Finding{
 		{Engine: "sca", AlternateID: "a1", State: "TO_VERIFY", AI: &findings.Assessment{Exploitability: "EXPLOITABLE", Reachability: "REACHABLE"}},
 		{Engine: "sca", AlternateID: "a2", State: "TO_VERIFY", AI: &findings.Assessment{Exploitability: "NOT_EXPLOITABLE", Reachability: "REACHABLE"}},
@@ -44,7 +36,7 @@ func TestRefreshStatesRetriesOnceOnMismatch(t *testing.T) {
 		return scaSet(map[string]string{"a1": "CONFIRMED", "a2": "PROPOSED_NOT_EXPLOITABLE", "a3": "TO_VERIFY"}), nil
 	}
 	var slept []time.Duration
-	err := refreshStates(logger, fetch, index, budget{}, 15*time.Second, func(d time.Duration) { slept = append(slept, d) })
+	err := RefreshStates(logger, fetch, index, Budget{}, 15*time.Second, func(d time.Duration) { slept = append(slept, d) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,14 +55,14 @@ func TestRefreshStatesRetriesOnceOnMismatch(t *testing.T) {
 }
 
 func TestRefreshStatesNoRetryWhenStatesMatch(t *testing.T) {
-	logger, _ := quietLogger()
+	logger, _ := testutil.QuietLogger()
 	index := []findings.Finding{{Engine: "sca", AlternateID: "a1", State: "TO_VERIFY", AI: &findings.Assessment{Exploitability: "NOT_EXPLOITABLE", Reachability: ""}}}
 	calls := 0
 	fetch := func() (Cx1ClientGo.ScanResultSet, error) {
 		calls++
 		return scaSet(map[string]string{"a1": "PROPOSED_NOT_EXPLOITABLE"}), nil
 	}
-	if err := refreshStates(logger, fetch, index, budget{}, time.Second, func(time.Duration) { t.Error("must not wait") }); err != nil {
+	if err := RefreshStates(logger, fetch, index, Budget{}, time.Second, func(time.Duration) { t.Error("must not wait") }); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 1 {
@@ -79,14 +71,14 @@ func TestRefreshStatesNoRetryWhenStatesMatch(t *testing.T) {
 }
 
 func TestRefreshStatesStillMismatchedAfterRetry(t *testing.T) {
-	logger, out := quietLogger()
+	logger, out := testutil.QuietLogger()
 	index := []findings.Finding{{Engine: "sca", AlternateID: "a1", State: "TO_VERIFY", AI: &findings.Assessment{Exploitability: "EXPLOITABLE", Reachability: "REACHABLE"}}}
 	calls := 0
 	fetch := func() (Cx1ClientGo.ScanResultSet, error) {
 		calls++
 		return scaSet(map[string]string{"a1": "TO_VERIFY"}), nil
 	}
-	_ = refreshStates(logger, fetch, index, budget{}, time.Second, func(time.Duration) {})
+	_ = RefreshStates(logger, fetch, index, Budget{}, time.Second, func(time.Duration) {})
 	if calls != 2 {
 		t.Errorf("fetches=%d, want exactly 2 (one retry only)", calls)
 	}
@@ -99,42 +91,42 @@ func TestRefreshStatesStillMismatchedAfterRetry(t *testing.T) {
 }
 
 func TestRefreshStatesFetchErrorsAndBudget(t *testing.T) {
-	logger, _ := quietLogger()
+	logger, _ := testutil.QuietLogger()
 	logger.SetOutput(io.Discard)
 	index := []findings.Finding{{Engine: "sca", AlternateID: "a1", State: "TO_VERIFY", AI: &findings.Assessment{Exploitability: "EXPLOITABLE", Reachability: ""}}}
 
 	// the first fetch fails: error returned, state untouched
-	if err := refreshStates(logger, func() (Cx1ClientGo.ScanResultSet, error) { return Cx1ClientGo.ScanResultSet{}, errors.New("boom") },
-		index, budget{}, time.Second, func(time.Duration) {}); err == nil || index[0].State != "TO_VERIFY" {
+	if err := RefreshStates(logger, func() (Cx1ClientGo.ScanResultSet, error) { return Cx1ClientGo.ScanResultSet{}, errors.New("boom") },
+		index, Budget{}, time.Second, func(time.Duration) {}); err == nil || index[0].State != "TO_VERIFY" {
 		t.Errorf("err=%v state=%s", err, index[0].State)
 	}
 
 	// the retry fetch fails: no error, states from the first read are kept
 	calls := 0
-	err := refreshStates(logger, func() (Cx1ClientGo.ScanResultSet, error) {
+	err := RefreshStates(logger, func() (Cx1ClientGo.ScanResultSet, error) {
 		calls++
 		if calls == 2 {
 			return Cx1ClientGo.ScanResultSet{}, errors.New("boom")
 		}
 		return scaSet(map[string]string{"a1": "TO_VERIFY"}), nil
-	}, index, budget{}, time.Second, func(time.Duration) {})
+	}, index, Budget{}, time.Second, func(time.Duration) {})
 	if err != nil || calls != 2 || index[0].State != "TO_VERIFY" {
 		t.Errorf("err=%v calls=%d state=%s", err, calls, index[0].State)
 	}
 
 	// not enough budget left: no retry
 	calls = 0
-	_ = refreshStates(logger, func() (Cx1ClientGo.ScanResultSet, error) {
+	_ = RefreshStates(logger, func() (Cx1ClientGo.ScanResultSet, error) {
 		calls++
 		return scaSet(map[string]string{"a1": "TO_VERIFY"}), nil
-	}, index, newBudget(time.Second), 15*time.Second, func(time.Duration) { t.Error("must not wait") })
+	}, index, NewBudget(time.Second), 15*time.Second, func(time.Duration) { t.Error("must not wait") })
 	if calls != 1 {
 		t.Errorf("fetches=%d, want 1 when the budget is nearly spent", calls)
 	}
 }
 
 func TestApplyFetchedStatesMatchesBySimilarityAndPackage(t *testing.T) {
-	logger, out := quietLogger()
+	logger, out := testutil.QuietLogger()
 	index := []findings.Finding{
 		// the platform's results carry no alternate ID, only the similarity ID (and package, for SCA)
 		{Engine: "sca", AlternateID: "rep1", SimilarityID: "CVE-1", PackageID: "Maven-a-1", State: "TO_VERIFY", AI: &findings.Assessment{Exploitability: "NOT_EXPLOITABLE", Reachability: ""}},

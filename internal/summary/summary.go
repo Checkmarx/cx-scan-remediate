@@ -1,4 +1,6 @@
-package main
+// Package summary describes what a run did, and what in the scan report still counts against the
+// pipeline's threshold, for the summary logged before the tool exits.
+package summary
 
 import (
 	"fmt"
@@ -111,9 +113,9 @@ func formatRemaining(counts []engineCount) string {
 	return strings.Join(parts, ", ")
 }
 
-// logRemainingSummary logs what the run did and what in the report still counts against the
+// Log logs what the run did and what in the report still counts against the
 // threshold. It logs nothing if the report has not been read (results is nil).
-func logRemainingSummary(logger *logrus.Logger, results *Cx1ClientGo.ScanResultSet, severities map[string]bool, engines findings.Engines, index []findings.Finding, c runCounters) {
+func Log(logger *logrus.Logger, results *Cx1ClientGo.ScanResultSet, severities map[string]bool, engines findings.Engines, index []findings.Finding, c RunCounters) {
 	if results == nil {
 		return
 	}
@@ -124,18 +126,23 @@ func logRemainingSummary(logger *logrus.Logger, results *Cx1ClientGo.ScanResultS
 	logger.Warnf("Results from the scan report still counting against the threshold (--severities matches, state not NOT_EXPLOITABLE; PROPOSED_NOT_EXPLOITABLE still counts): %s", formatRemaining(counts))
 }
 
-// runCounters records what this run did, for the summary logged on exit.
-type runCounters struct {
+// RunCounters records what this run did, for the summary logged on exit.
+type RunCounters struct {
 	Requested    map[string]bool // findings AI Remediation was requested for
 	BranchExists map[string]bool // verified findings skipped because their pull request branch already exists
 	PRsOpened    int
+}
+
+// NewRunCounters returns counters for a run that has done nothing yet.
+func NewRunCounters() RunCounters {
+	return RunCounters{Requested: map[string]bool{}, BranchExists: map[string]bool{}}
 }
 
 // describeRun summarizes what this run did with the findings it handles (the --engines and
 // --severities selection): what AI Triage concluded, what was remediated, and what is still waiting
 // for a later run. Nothing here is a priority or a gate; every in-scope finding has to be
 // addressed eventually, so the order in which runs get to them does not matter.
-func describeRun(index []findings.Finding, c runCounters) []string {
+func describeRun(index []findings.Finding, c RunCounters) []string {
 	triaged := map[string]int{}
 	nTriaged, notTriaged, verified, notRemediated := 0, 0, 0, 0
 	for i := range index {
@@ -174,8 +181,3 @@ func describeRun(index []findings.Finding, c runCounters) []string {
 	lines = append(lines, fmt.Sprintf("Still to do in later runs (in scope for this tool): %d To_Verify finding(s) not triaged yet, %d Confirmed/Urgent finding(s) not remediated yet (of %d Confirmed/Urgent in total)", notTriaged, notRemediated, verified))
 	return lines
 }
-
-// version is the release this binary was built from. goreleaser sets it (its default ldflags
-// include -X main.version={{.Version}}); a plain "go build" reports "dev". It is part of the
-// default user agent, so requests can be traced to this tool in the platform logs.
-var version = "dev"

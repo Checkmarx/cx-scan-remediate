@@ -3,12 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"math"
 	"strings"
-	"time"
 
 	"github.com/Checkmarx/cx-scan-remediate/internal/findings"
-	"github.com/cxpsemea/Cx1ClientGo"
 	"github.com/sirupsen/logrus"
 )
 
@@ -140,31 +137,6 @@ func applyEnvDefaults(fs *flag.FlagSet) error {
 			if err := fs.Set(name, v); err != nil {
 				return fmt.Errorf("invalid value %q in %s for --%s: %w", v, strings.Join(envs, "/"), name, err)
 			}
-		}
-	}
-	return nil
-}
-
-// applyPollingOverrides sets the library's AI polling settings from the --ai-* flags: how often
-// the platform is asked whether an AI Triage or AI Remediation job has finished, and how long to
-// wait for one finding, and the same for fetching the result details afterwards. A zero value
-// keeps the library's default; a negative one is an error. Values are rounded up to whole seconds.
-func applyPollingOverrides(vars *Cx1ClientGo.ClientVars, interval, timeout, detailsInterval, detailsTimeout time.Duration) error {
-	for _, o := range []struct {
-		name string
-		d    time.Duration
-		dst  *int
-	}{
-		{"--ai-poll-interval", interval, &vars.AIPollingDelaySeconds},
-		{"--ai-poll-timeout", timeout, &vars.AIPollingMaxSeconds},
-		{"--ai-details-poll-interval", detailsInterval, &vars.AIDetailsPollingDelaySeconds},
-		{"--ai-details-poll-timeout", detailsTimeout, &vars.AIDetailsPollingMaxSeconds},
-	} {
-		if o.d < 0 {
-			return fmt.Errorf("%s must not be negative (got %s)", o.name, o.d)
-		}
-		if o.d > 0 {
-			*o.dst = int(math.Ceil(o.d.Seconds()))
 		}
 	}
 	return nil

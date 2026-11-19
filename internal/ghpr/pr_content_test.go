@@ -1,4 +1,4 @@
-package main
+package ghpr
 
 import (
 	"strings"
@@ -14,37 +14,6 @@ func resultWith(id, title, summary string) Cx1ClientGo.AIRemediationResult {
 	r.Data.PRTitle = title
 	r.Data.Summary = summary
 	return r
-}
-
-func TestSelectResult(t *testing.T) {
-	failure := "model failed"
-	errored := resultWith("a", "", "")
-	errored.Data.Error = &failure
-
-	details := func(rs ...Cx1ClientGo.AIRemediationResult) Cx1ClientGo.AIRemediationDetails {
-		return Cx1ClientGo.AIRemediationDetails{Results: rs}
-	}
-
-	// the matching result is chosen, whatever its position
-	got, err := selectResult(details(errored, resultWith("b", "B", "")), "b")
-	if err != nil || got.ResultID != "b" {
-		t.Errorf("matching result: got %q, %v", got.ResultID, err)
-	}
-	// a single result is used when its ID does not match
-	if got, err := selectResult(details(resultWith("other", "", "")), "b"); err != nil || got.ResultID != "other" {
-		t.Errorf("single result: got %q, %v", got.ResultID, err)
-	}
-	// several results and no match: nothing can be chosen
-	if _, err := selectResult(details(resultWith("x", "", ""), resultWith("y", "", "")), "b"); err == nil {
-		t.Error("expected an error when no result matches")
-	}
-	if _, err := selectResult(details(), "b"); err == nil {
-		t.Error("expected an error for no results")
-	}
-	// the finding's own result errored: it must not be replaced by another one
-	if _, err := selectResult(details(errored, resultWith("b", "B", "")), "a"); err == nil || !strings.Contains(err.Error(), "model failed") {
-		t.Errorf("errored result: got %v", err)
-	}
 }
 
 func TestFindingLink(t *testing.T) {

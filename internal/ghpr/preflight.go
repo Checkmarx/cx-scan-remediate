@@ -1,4 +1,4 @@
-package main
+package ghpr
 
 import (
 	"context"
@@ -13,13 +13,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// errConfig marks a preflight failure the user has to fix (missing git, unusable repository,
+// ErrConfig marks a preflight failure the user has to fix (missing git, unusable repository,
 // token without access, missing base branch). Any other error is an operational failure, such
 // as GitHub being unreachable.
-var errConfig = errors.New("configuration problem")
+var ErrConfig = errors.New("configuration problem")
 
 func configErrorf(format string, args ...interface{}) error {
-	return fmt.Errorf("%w: %s", errConfig, fmt.Sprintf(format, args...))
+	return fmt.Errorf("%w: %s", ErrConfig, fmt.Sprintf(format, args...))
 }
 
 // githubAccessError classifies a failed GitHub lookup. 401, 403 and 404 mean the token or the
@@ -88,10 +88,10 @@ func resolveRepoRef(cxclient *Cx1ClientGo.Cx1Client, scan *Cx1ClientGo.Scan, rep
 	return project.RepoUrl, nil
 }
 
-// preflightPR checks everything pull request creation depends on, so that a problem is found
+// Preflight checks everything pull request creation depends on, so that a problem is found
 // before AI credits are spent rather than after. On success it returns pr with Repo and
 // BaseBranch filled in, so publishing does not look them up again.
-func preflightPR(ctx context.Context, logger *logrus.Logger, cxclient *Cx1ClientGo.Cx1Client, scan *Cx1ClientGo.Scan, pr prOptions, sourceDir string) (prOptions, error) {
+func Preflight(ctx context.Context, logger *logrus.Logger, cxclient *Cx1ClientGo.Cx1Client, scan *Cx1ClientGo.Scan, pr Options, sourceDir string) (Options, error) {
 	if _, err := exec.LookPath("git"); err != nil {
 		return pr, configErrorf("git was not found on PATH; it is needed to apply remediation diffs")
 	}

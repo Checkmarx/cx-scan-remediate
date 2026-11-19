@@ -1,4 +1,4 @@
-package main
+package ghpr
 
 import (
 	"context"
@@ -14,22 +14,22 @@ func TestBranchFor(t *testing.T) {
 	f := &findings.Finding{Engine: "sast", AlternateID: "HLg6+Y/o="}
 	cases := []struct {
 		name string
-		pr   prOptions
+		pr   Options
 		want string
 	}{
-		{"default", prOptions{}, "cx-remediate/sast-HLg6-Y-o-"},
-		{"prefix", prOptions{Branch: "fix"}, "fix-sast-HLg6-Y-o-"},
-		{"prefix ending in slash", prOptions{Branch: "team/fix/"}, "team/fix/sast-HLg6-Y-o-"},
-		{"prefix ending in dash", prOptions{Branch: "fix-"}, "fix-sast-HLg6-Y-o-"},
+		{"default", Options{}, "cx-remediate/sast-HLg6-Y-o-"},
+		{"prefix", Options{Branch: "fix"}, "fix-sast-HLg6-Y-o-"},
+		{"prefix ending in slash", Options{Branch: "team/fix/"}, "team/fix/sast-HLg6-Y-o-"},
+		{"prefix ending in dash", Options{Branch: "fix-"}, "fix-sast-HLg6-Y-o-"},
 	}
 	for _, c := range cases {
-		if got := branchFor(c.pr, f); got != c.want {
-			t.Errorf("%s: branchFor = %q, want %q", c.name, got, c.want)
+		if got := BranchFor(c.pr, f); got != c.want {
+			t.Errorf("%s: BranchFor = %q, want %q", c.name, got, c.want)
 		}
 	}
 	// the name must be stable between runs, or "already remediated" can never be detected
-	if branchFor(prOptions{}, f) != branchFor(prOptions{}, f) {
-		t.Error("branchFor is not deterministic")
+	if BranchFor(Options{}, f) != BranchFor(Options{}, f) {
+		t.Error("BranchFor is not deterministic")
 	}
 }
 
@@ -39,10 +39,10 @@ func TestBranchExists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := branchExists(context.Background(), client, "o", "r", "taken"); err != nil || !ok {
+	if ok, err := BranchExists(context.Background(), client, "o", "r", "taken"); err != nil || !ok {
 		t.Errorf("existing branch: got (%v, %v), want (true, nil)", ok, err)
 	}
-	if ok, err := branchExists(context.Background(), client, "o", "r", "free"); err != nil || ok {
+	if ok, err := BranchExists(context.Background(), client, "o", "r", "free"); err != nil || ok {
 		t.Errorf("absent branch: got (%v, %v), want (false, nil)", ok, err)
 	}
 
@@ -55,7 +55,7 @@ func TestBranchExists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := branchExists(context.Background(), client, "o", "r", "x"); err == nil || ok {
+	if ok, err := BranchExists(context.Background(), client, "o", "r", "x"); err == nil || ok {
 		t.Errorf("server error: got (%v, %v), want (false, error)", ok, err)
 	}
 }

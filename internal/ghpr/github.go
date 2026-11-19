@@ -1,4 +1,7 @@
-package main
+// Package ghpr publishes remediations as GitHub pull requests: it resolves the target repository,
+// checks that pull requests can be created before any AI credits are spent, and creates the
+// branch, commit and pull request of each remediation through the GitHub API.
+package ghpr
 
 import (
 	"cmp"
@@ -9,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Checkmarx/cx-scan-remediate/internal/errlog"
 	"github.com/Checkmarx/cx-scan-remediate/internal/findings"
 	"github.com/Checkmarx/cx-scan-remediate/internal/patch"
 	"github.com/cxpsemea/Cx1ClientGo"
@@ -200,7 +204,7 @@ func publishPR(ctx context.Context, client *github.Client, owner, repo string, o
 	// be deleted here (client.Git.DeleteRef), but this tool deliberately does not: deleting a
 	// branch on an error path risks removing something it should not (for example a branch that
 	// someone has since pushed to), and a leftover branch is harmless. The next run skips the
-	// finding because the branch exists (see branchExists), and a person can delete the branch
+	// finding because the branch exists (see BranchExists), and a person can delete the branch
 	// to have it retried.
 	pr, _, err := client.PullRequests.Create(ctx, owner, repo, github.CreatePullRequest{
 		Title: new(opts.PRTitle),
@@ -215,9 +219,9 @@ func publishPR(ctx context.Context, client *github.Client, owner, repo string, o
 	return pr.GetHTMLURL(), nil
 }
 
-// branchExists reports whether the branch already exists in owner/repo. A 404 means it does not;
+// BranchExists reports whether the branch already exists in owner/repo. A 404 means it does not;
 // any other failure is returned, so the caller never mistakes "could not check" for "absent".
-func branchExists(ctx context.Context, client *github.Client, owner, repo, branch string) (bool, error) {
+func BranchExists(ctx context.Context, client *github.Client, owner, repo, branch string) (bool, error) {
 	_, resp, err := client.Git.GetRef(ctx, owner, repo, "refs/heads/"+branch)
 	if err == nil {
 		return true, nil
@@ -228,8 +232,8 @@ func branchExists(ctx context.Context, client *github.Client, owner, repo, branc
 	return false, err
 }
 
-// prOptions configures how a pull request is published for each remediation.
-type prOptions struct {
+// Options configures how a pull request is published for each remediation.
+type Options struct {
 	Token      string
 	Transport  http.RoundTripper // shared with the Checkmarx One client, so GitHub calls honor -proxy, -insecure and -caCert
 	Repo       string
@@ -239,11 +243,11 @@ type prOptions struct {
 	DeepLink string
 }
 
-// branchFor names the branch for a finding's pull request. The name depends only on the
+// BranchFor names the branch for a finding's pull request. The name depends only on the
 // finding, so the same finding always gets the same branch and a later run can tell it has
 // already been remediated. --pr-branch is always a prefix, joined to the finding with "-" (or
 // directly, if the prefix already ends in "/" or "-").
-func branchFor(pr prOptions, f *findings.Finding) string {
+func BranchFor(pr Options, f *findings.Finding) string {
 	prefix := cmp.Or(pr.Branch, defaultBranchPrefix)
 	if !strings.HasSuffix(prefix, "/") && !strings.HasSuffix(prefix, "-") {
 		prefix += "-"
@@ -258,9 +262,9 @@ const defaultBranchPrefix = "cx-remediate/"
 // filesystems place on a ref name.
 const maxBranchComponent = 100
 
-// githubTarget returns a GitHub client and the owner and repo to look for branches in.
+// Target returns a GitHub client and the owner and repo to look for branches in.
 // pr.Repo has already been resolved by the preflight.
-func githubTarget(pr prOptions) (*github.Client, string, string, error) {
+func Target(pr Options) (*github.Client, string, string, error) {
 	host, owner, repo, err := parseOwnerRepo(pr.Repo)
 	if err != nil {
 		return nil, "", "", err
@@ -272,15 +276,15 @@ func githubTarget(pr prOptions) (*github.Client, string, string, error) {
 	return client, owner, repo, nil
 }
 
-// publishRemediationPR opens a GitHub pull request containing exactly the files produced by
+// Publish opens a GitHub pull request containing exactly the files produced by
 // patch.Apply. It reports whether a pull request was opened; failures are recorded in errs.
-func publishRemediationPR(logger *logrus.Logger, errs *errorRecorder, result Cx1ClientGo.AIRemediationResult, finding *findings.Finding, applied []patch.File, pr prOptions, branch string) bool {
+func Publish(logger *logrus.Logger, errs *errlog.Recorder, result Cx1ClientGo.AIRemediationResult, finding *findings.Finding, applied []patch.File, pr Options, branch string) bool {
 	if len(applied) == 0 {
 		logger.Info("Remediation produced no file changes; skipping pull request creation")
 		return false
 	}
 
-	client, owner, repo, err := githubTarget(pr)
+	client, owner, repo, err := Target(pr)
 	if err != nil {
 		errs.Errorf("Failed to set up GitHub access for %q: %s", pr.Repo, err)
 		return false

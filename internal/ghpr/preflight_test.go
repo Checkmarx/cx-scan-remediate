@@ -1,4 +1,4 @@
-package main
+package ghpr
 
 import (
 	"context"
@@ -63,8 +63,8 @@ func TestCheckRepoAccess(t *testing.T) {
 			if (err != nil) != c.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, c.wantErr)
 			}
-			if err != nil && errors.Is(err, errConfig) != c.wantConfig {
-				t.Errorf("config error = %v, want %v (%v)", errors.Is(err, errConfig), c.wantConfig, err)
+			if err != nil && errors.Is(err, ErrConfig) != c.wantConfig {
+				t.Errorf("config error = %v, want %v (%v)", errors.Is(err, ErrConfig), c.wantConfig, err)
 			}
 			if got != c.wantBase {
 				t.Errorf("base = %q, want %q", got, c.wantBase)

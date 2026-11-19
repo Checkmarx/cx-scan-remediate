@@ -1,4 +1,4 @@
-package main
+package summary
 
 import (
 	"strings"
@@ -18,7 +18,7 @@ func TestDescribeRun(t *testing.T) {
 		{Engine: "sast", AlternateID: "c2", State: "URGENT"},    // branch already exists
 		{Engine: "sast", AlternateID: "c3", State: "CONFIRMED"}, // not reached this run
 	}
-	c := runCounters{
+	c := RunCounters{
 		Requested:    map[string]bool{"sast/c1": true},
 		BranchExists: map[string]bool{"sast/c2": true},
 		PRsOpened:    1,
@@ -37,7 +37,7 @@ func TestDescribeRun(t *testing.T) {
 }
 
 func TestDescribeRunNothingDone(t *testing.T) {
-	got := strings.Join(describeRun([]findings.Finding{{Engine: "sca", AlternateID: "v1", State: "TO_VERIFY"}}, runCounters{Requested: map[string]bool{}, BranchExists: map[string]bool{}}), "\n")
+	got := strings.Join(describeRun([]findings.Finding{{Engine: "sca", AlternateID: "v1", State: "TO_VERIFY"}}, RunCounters{Requested: map[string]bool{}, BranchExists: map[string]bool{}}), "\n")
 	if !strings.Contains(got, "no findings were triaged") || !strings.Contains(got, "1 To_Verify finding(s) not triaged yet, 0 Confirmed/Urgent") {
 		t.Errorf("unexpected summary:\n%s", got)
 	}

@@ -5,9 +5,7 @@ import (
 	"flag"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/cxpsemea/Cx1ClientGo"
 	"github.com/sirupsen/logrus"
 )
 
@@ -124,18 +122,5 @@ func TestFlagEnvNamesAreKebabCase(t *testing.T) {
 		if len(envs) == 0 {
 			t.Errorf("flag %q has no environment variable", name)
 		}
-	}
-}
-
-func TestApplyPollingOverrides(t *testing.T) {
-	vars := Cx1ClientGo.ClientVars{AIPollingDelaySeconds: 30, AIPollingMaxSeconds: 600, AIDetailsPollingDelaySeconds: 15, AIDetailsPollingMaxSeconds: 60}
-	if err := applyPollingOverrides(&vars, 0, 20*time.Minute, 1500*time.Millisecond, 0); err != nil {
-		t.Fatal(err)
-	}
-	if vars.AIPollingDelaySeconds != 30 || vars.AIPollingMaxSeconds != 1200 || vars.AIDetailsPollingDelaySeconds != 2 || vars.AIDetailsPollingMaxSeconds != 60 {
-		t.Errorf("unexpected %+v", vars)
-	}
-	if err := applyPollingOverrides(&vars, -time.Second, 0, 0, 0); err == nil {
-		t.Error("a negative duration must be rejected")
 	}
 }

@@ -1,4 +1,4 @@
-package main
+package cx1ai
 
 import (
 	"fmt"
@@ -10,17 +10,17 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// useRefetchedStates is a TEMPORARY switch. When true, the states are re-read from the platform
-// after AI Triage (refreshStates) and the platform is the source of truth. It is off because the
+// UseRefetchedStates is a TEMPORARY switch. When true, the states are re-read from the platform
+// after AI Triage (RefreshStates) and the platform is the source of truth. It is off because the
 // results API currently does not return the AI Triage state (every finding still reads TO_VERIFY;
 // support case raised), so the state is taken from AI Triage's own response instead
 // (aiTriageState). Turn it on to test the re-read once the platform bug is fixed; the finding
 // matching in applyFetchedStates is also still unverified against a live run.
-const useRefetchedStates = false
+const UseRefetchedStates = false
 
-// stateRetryDelay is how long to wait before re-reading the results once, when the platform's
+// StateRetryDelay is how long to wait before re-reading the results once, when the platform's
 // states do not match what AI Triage said (the result state may lag behind the triage job).
-const stateRetryDelay = 15 * time.Second
+const StateRetryDelay = 15 * time.Second
 
 // severityList turns the --severities set into the list the results filter takes, most severe first.
 func severityList(severities map[string]bool) []string {
@@ -32,12 +32,12 @@ func severityList(severities map[string]bool) []string {
 	return list
 }
 
-// resultsFetcher returns the scan's results as the platform currently has them.
-type resultsFetcher func() (Cx1ClientGo.ScanResultSet, error)
+// ResultsFetcher returns the scan's results as the platform currently has them.
+type ResultsFetcher func() (Cx1ClientGo.ScanResultSet, error)
 
-// fetchResultsFor builds a resultsFetcher for one scan, limited to the --severities list. It has no
+// FetchResultsFor builds a ResultsFetcher for one scan, limited to the --severities list. It has no
 // state filter, so findings whose state changed to anything are seen.
-func fetchResultsFor(cxclient *Cx1ClientGo.Cx1Client, scanID string, severities map[string]bool) resultsFetcher {
+func FetchResultsFor(cxclient *Cx1ClientGo.Cx1Client, scanID string, severities map[string]bool) ResultsFetcher {
 	return func() (Cx1ClientGo.ScanResultSet, error) {
 		pagination := cxclient.GetPaginationSettings()
 		_, fetched, err := cxclient.GetAllScanResultsFiltered(Cx1ClientGo.ScanResultsFilter{
@@ -49,7 +49,7 @@ func fetchResultsFor(cxclient *Cx1ClientGo.Cx1Client, scanID string, severities 
 	}
 }
 
-// refreshStates re-reads the scan's results from the platform after AI Triage and sets the state
+// RefreshStates re-reads the scan's results from the platform after AI Triage and sets the state
 // of every finding in index to what the platform reports: the platform, not the AI's label, is
 // the source of truth for whether a finding is exploitable. AI Triage's own assessment is only
 // used as an expectation. If a triaged finding's state is not what that assessment implies, it
@@ -57,7 +57,7 @@ func fetchResultsFor(cxclient *Cx1ClientGo.Cx1Client, scanID string, severities 
 // triage job; whatever is reported then is used, with any remaining mismatch logged again.
 // If the results cannot be fetched, the states are left as they were, so nothing becomes
 // eligible for remediation on a guess. The retry is skipped if the budget has less than wait left.
-func refreshStates(logger *logrus.Logger, fetch resultsFetcher, index []findings.Finding, aiBudget budget, wait time.Duration, sleep func(time.Duration)) error {
+func RefreshStates(logger *logrus.Logger, fetch ResultsFetcher, index []findings.Finding, aiBudget Budget, wait time.Duration, sleep func(time.Duration)) error {
 	fetched, err := fetch()
 	if err != nil {
 		return err
@@ -72,7 +72,7 @@ func refreshStates(logger *logrus.Logger, fetch resultsFetcher, index []findings
 	for _, m := range mismatches {
 		logger.Warn(m)
 	}
-	if aiBudget.remaining() <= wait {
+	if aiBudget.Remaining() <= wait {
 		logger.Warn("Not enough of the overall -timeout left to re-read the results; using the states above")
 		return nil
 	}

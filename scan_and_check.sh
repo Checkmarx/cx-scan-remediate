@@ -45,7 +45,7 @@ fi
 export CXSR_TRIAGE_COUNT CXSR_REMEDIATE_COUNT CXSR_ENGINES CXSR_SEVERITIES CXSR_BASE_BRANCH
 
 threshold="${CXSR_THRESHOLD:-sast-critical=1;sast-high=1;sca-critical=1;sca-high=1;iac-security-critical=1;iac-security-high=1;api-security-critical=1;api-security-high=1;containers-critical=1;containers-high=1;sscs-secret-detection-critical=1;sscs-secret-detection-high=1;sscs-scorecard-critical=1;sscs-scorecard-high=1}"
-release_repo="${CXSR_RELEASE_REPO:-cx-michael-kubiaczyk/cx1-scan-remediate}"
+release_repo="${CXSR_RELEASE_REPO:-Checkmarx/cx-scan-remediate}"
 
 proxy="${CXSR_PROXY:-}"
 cacert="${CXSR_CA_CERT:-}"

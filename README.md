@@ -1,6 +1,7 @@
 # Checkmarx One Scan & Remediate
 
-[![Checkmarx One Scan](https://github.com/Checkmarx/cx-scan-remediate/actions/workflows/checkmarx-one-scan.yml/badge.svg)](https://github.com/Checkmarx/cx-scan-remediate/actions/workflows/checkmarx-one-scan.yml)
+[![CI](https://github.com/Checkmarx/cx-scan-remediate/actions/workflows/ci.yml/badge.svg)](https://github.com/Checkmarx/cx-scan-remediate/actions/workflows/ci.yml)
+[![Checkmarx One Scan](https://github.com/Checkmarx/cx-scan-remediate/actions/workflows/cx-one-scan.yaml/badge.svg)](https://github.com/Checkmarx/cx-scan-remediate/actions/workflows/cx-one-scan.yaml)
 [![DCO](https://github.com/Checkmarx/cx-scan-remediate/actions/workflows/dco.yml/badge.svg)](https://github.com/Checkmarx/cx-scan-remediate/actions/workflows/dco.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE.txt)
 

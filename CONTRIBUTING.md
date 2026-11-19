@@ -41,6 +41,20 @@ pip install pre-commit
 pre-commit install
 ```
 
+### Building and testing
+
+You need Go (the version in [go.mod](go.mod)) and `git` on `PATH` (the patch tests run `git apply`).
+
+```bash
+go build ./...                                      # every package
+go build -o cxscanremediate ./cmd/cxscanremediate   # the binary
+go vet ./...
+go test ./...
+```
+
+CI runs `gofmt -l`, `go build`, `go vet` and `go test` on every pull request ([ci.yml](.github/workflows/ci.yml)).
+The [code layout](docs/usage.md#code-layout) section of the usage guide describes the packages.
+
 ## Issues
 
 Issues should be used to report problems with the solution / source code, request a new feature, or to discuss potential changes before a PR is created. When you create a new Issue, a template will be loaded that will guide you through collecting and providing the information we need to investigate.
@@ -111,7 +125,7 @@ See [GitHub: Signing commits](https://docs.github.com/en/authentication/managing
 The default branch is protected. Every change must be merged through a pull request that:
 
 - is approved by at least one [code owner](CODEOWNERS) (see [MAINTAINERS.md](MAINTAINERS.md)),
-- passes all required checks, including the [Checkmarx One scan](.github/workflows/checkmarx-one-scan.yml) and the DCO check.
+- passes all required checks, including [CI](.github/workflows/ci.yml), the [Checkmarx One scan](.github/workflows/cx-one-scan.yaml) and the DCO check.
 
 ## Security Issues
 

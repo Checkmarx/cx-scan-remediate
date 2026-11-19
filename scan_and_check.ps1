@@ -125,7 +125,7 @@ function Invoke-Main {
     $threshold = Get-Env @('CXSR_THRESHOLD')
     if (-not $threshold) { $threshold = 'sast-critical=1;sast-high=1;sca-critical=1;sca-high=1;iac-security-critical=1;iac-security-high=1;api-security-critical=1;api-security-high=1;containers-critical=1;containers-high=1;sscs-secret-detection-critical=1;sscs-secret-detection-high=1;sscs-scorecard-critical=1;sscs-scorecard-high=1' }
     $releaseRepo = Get-Env @('CXSR_RELEASE_REPO')
-    if (-not $releaseRepo) { $releaseRepo = 'cx-michael-kubiaczyk/cx1-scan-remediate' }
+    if (-not $releaseRepo) { $releaseRepo = 'Checkmarx/cx-scan-remediate' }
 
     $script:Proxy = Get-Env @('CXSR_PROXY')
     $script:CaCert = Get-Env @('CXSR_CA_CERT')

@@ -1,0 +1,44 @@
+name: Release
+
+# Builds the binaries with goreleaser and attaches them, their checksums and the CI helper scripts
+# to a GitHub release when it is published. scan_and_check.sh / .ps1 download the release marked
+# "latest", so mark each new release as latest.
+
+on:
+  release:
+    types: [published]
+
+permissions: {}            # workflow default — deny all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  goreleaser:
+    name: Build and attach release assets
+    runs-on: cx-public-ubuntu-x64
+    timeout-minutes: 20
+    permissions:
+      contents: write      # upload the release assets
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: false     # no build cache in a job that can write to the repository
+
+      - name: Run GoReleaser
+        uses: step-security/goreleaser-action@1472c46ac6e641f2b929f1a893354288b3a6b6b6 # v7.2.1
+        with:
+          distribution: goreleaser
+          version: "v2.20.2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

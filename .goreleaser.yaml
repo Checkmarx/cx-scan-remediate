@@ -4,14 +4,14 @@ project_name: cxscanremediate
 
 builds:
   - id: linux
-    main: .
+    main: ./cmd/cxscanremediate
     goos: [linux]
     goarch: [amd64, arm64]
     binary: cxscanremediate
     env:
       - CGO_ENABLED=0
   - id: windows
-    main: .
+    main: ./cmd/cxscanremediate
     goos: [windows]
     goarch: [amd64]
     binary: cxscanremediate

@@ -22,7 +22,7 @@ concurrency:
 jobs:
   cx-one-scan:
     name: Checkmarx One Scan
-    runs-on: cx-private-ubuntu-x64
+    runs-on: cx-public-ubuntu-x64
     timeout-minutes: 30
     permissions:
       contents: read

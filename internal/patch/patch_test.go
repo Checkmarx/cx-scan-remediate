@@ -1,16 +1,15 @@
-package main
+package patch
 
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Checkmarx/cx-scan-remediate/internal/testutil"
 	"github.com/cxpsemea/Cx1ClientGo"
-	"github.com/sirupsen/logrus"
 )
 
 const pomOriginal = "<project>\n" +
@@ -24,34 +23,6 @@ const pomOriginal = "<project>\n" +
 	"    <dependency>okhttp 3.8.0</dependency>\n" +
 	"  </dependencies>\n" +
 	"</project>\n"
-
-func testLogger() *logrus.Logger {
-	l := logrus.New()
-	l.SetLevel(logrus.PanicLevel)
-	return l
-}
-
-func requireGit(t *testing.T) {
-	t.Helper()
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not available")
-	}
-	// ignore the developer's git config: e.g. core.autocrlf=true makes "git apply" write CRLF
-	// into new files, which would make byte-exact assertions machine-dependent
-	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-}
-
-func writeFile(t *testing.T, dir, rel, content string) {
-	t.Helper()
-	p := filepath.Join(dir, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(p, []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
-}
 
 func remediationWith(changes ...Cx1ClientGo.AIRemediationFileChange) Cx1ClientGo.AIRemediationDetails {
 	return Cx1ClientGo.AIRemediationDetails{Results: []Cx1ClientGo.AIRemediationResult{
@@ -75,16 +46,16 @@ func pomDiff(oldLine, newLine string) Cx1ClientGo.AIRemediationFileChange {
 // The scenario from the bug report: two remediations that both modify pom.xml must each apply
 // cleanly, and neither may leak into the other or into the source tree.
 func TestSameFileRemediationsAreIndependent(t *testing.T) {
-	requireGit(t)
+	testutil.RequireGit(t)
 	base := t.TempDir()
-	writeFile(t, base, "pom.xml", pomOriginal)
+	testutil.WriteFile(t, base, "pom.xml", pomOriginal)
 
-	first, err := applyRemediationInMemory(testLogger(), remediationWith(
+	first, err := Apply(testutil.Logger(), remediationWith(
 		pomDiff("    <dependency>log4j 2.14.0</dependency>", "    <dependency>log4j 2.17.1</dependency>")), base, false)
 	if err != nil {
 		t.Fatalf("first remediation: %v", err)
 	}
-	second, err := applyRemediationInMemory(testLogger(), remediationWith(
+	second, err := Apply(testutil.Logger(), remediationWith(
 		pomDiff("    <dependency>snakeyaml 1.20</dependency>", "    <dependency>snakeyaml 2.0</dependency>")), base, false)
 	if err != nil {
 		t.Fatalf("second remediation should not be affected by the first: %v", err)
@@ -112,9 +83,9 @@ func TestSameFileRemediationsAreIndependent(t *testing.T) {
 // AI-generated diffs can carry hunk line numbers that are a little off. "git apply" copes with
 // this, which is why it is used rather than a library that only applies hunks at the stated position.
 func TestApplyRemediationToleratesLineDrift(t *testing.T) {
-	requireGit(t)
+	testutil.RequireGit(t)
 	base := t.TempDir()
-	writeFile(t, base, "pom.xml", pomOriginal)
+	testutil.WriteFile(t, base, "pom.xml", pomOriginal)
 
 	fc := pomDiff("    <dependency>guava 20.0</dependency>", "    <dependency>guava 32.0</dependency>")
 	fc.Diff = strings.Replace(fc.Diff, "@@ -4,3 +4,3 @@", "@@ -7,3 +7,3 @@", 1) // real position is line 4
@@ -122,7 +93,7 @@ func TestApplyRemediationToleratesLineDrift(t *testing.T) {
 		t.Fatalf("test setup: header not rewritten: %q", fc.Diff)
 	}
 
-	files, err := applyRemediationInMemory(testLogger(), remediationWith(fc), base, false)
+	files, err := Apply(testutil.Logger(), remediationWith(fc), base, false)
 	if err != nil {
 		t.Fatalf("drifted diff should still apply: %v", err)
 	}
@@ -132,7 +103,7 @@ func TestApplyRemediationToleratesLineDrift(t *testing.T) {
 }
 
 func TestApplyRemediationCreatesAndGenerates(t *testing.T) {
-	requireGit(t)
+	testutil.RequireGit(t)
 	base := t.TempDir()
 
 	details := remediationWith(Cx1ClientGo.AIRemediationFileChange{
@@ -143,7 +114,7 @@ func TestApplyRemediationCreatesAndGenerates(t *testing.T) {
 		{FilePath: "src/test/SafeTest.java", FileContent: "class SafeTest {}\n"},
 	}
 
-	files, err := applyRemediationInMemory(testLogger(), details, base, false)
+	files, err := Apply(testutil.Logger(), details, base, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,9 +132,9 @@ func TestApplyRemediationCreatesAndGenerates(t *testing.T) {
 
 // A remediation whose diff fails must produce nothing, even if another of its diffs is fine.
 func TestApplyRemediationIsAllOrNothing(t *testing.T) {
-	requireGit(t)
+	testutil.RequireGit(t)
 	base := t.TempDir()
-	writeFile(t, base, "pom.xml", pomOriginal)
+	testutil.WriteFile(t, base, "pom.xml", pomOriginal)
 
 	good := pomDiff("    <dependency>log4j 2.14.0</dependency>", "    <dependency>log4j 2.17.1</dependency>")
 	bad := Cx1ClientGo.AIRemediationFileChange{
@@ -171,7 +142,7 @@ func TestApplyRemediationIsAllOrNothing(t *testing.T) {
 		Diff:     "--- a/pom.xml\n+++ b/pom.xml\n@@ -1,1 +1,1 @@\n-<nothing like this>\n+<anything>\n",
 	}
 
-	files, err := applyRemediationInMemory(testLogger(), remediationWith(good, bad), base, false)
+	files, err := Apply(testutil.Logger(), remediationWith(good, bad), base, false)
 	if err == nil || files != nil {
 		t.Fatalf("expected failure with no files, got %v / %v", files, err)
 	}
@@ -179,14 +150,14 @@ func TestApplyRemediationIsAllOrNothing(t *testing.T) {
 
 // Two diffs to one file within a single remediation chain onto each other.
 func TestApplyRemediationChainsDiffsWithinOneRemediation(t *testing.T) {
-	requireGit(t)
+	testutil.RequireGit(t)
 	base := t.TempDir()
-	writeFile(t, base, "pom.xml", pomOriginal)
+	testutil.WriteFile(t, base, "pom.xml", pomOriginal)
 
 	a := pomDiff("    <dependency>log4j 2.14.0</dependency>", "    <dependency>log4j 2.17.1</dependency>")
 	b := pomDiff("    <dependency>snakeyaml 1.20</dependency>", "    <dependency>snakeyaml 2.0</dependency>")
 
-	files, err := applyRemediationInMemory(testLogger(), remediationWith(a, b), base, false)
+	files, err := Apply(testutil.Logger(), remediationWith(a, b), base, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,18 +168,18 @@ func TestApplyRemediationChainsDiffsWithinOneRemediation(t *testing.T) {
 }
 
 func TestApplyRemediationRejectsUnsafePaths(t *testing.T) {
-	requireGit(t)
+	testutil.RequireGit(t)
 	base := t.TempDir()
 
 	for _, p := range []string{"../outside.txt", "/etc/passwd", "a/../../b", ""} {
 		fc := Cx1ClientGo.AIRemediationFileChange{FilePath: p, Diff: "--- /dev/null\n+++ b/x\n@@ -0,0 +1 @@\n+x\n"}
-		if _, err := applyRemediationInMemory(testLogger(), remediationWith(fc), base, false); err == nil {
+		if _, err := Apply(testutil.Logger(), remediationWith(fc), base, false); err == nil {
 			t.Errorf("file change path %q should have been rejected", p)
 		}
 
 		details := remediationWith()
 		details.Results[0].Data.TestCreation.TestFiles = []Cx1ClientGo.AIRemediationTestFile{{FilePath: p, FileContent: "x"}}
-		if _, err := applyRemediationInMemory(testLogger(), details, base, false); err == nil {
+		if _, err := Apply(testutil.Logger(), details, base, false); err == nil {
 			t.Errorf("test file path %q should have been rejected", p)
 		}
 	}

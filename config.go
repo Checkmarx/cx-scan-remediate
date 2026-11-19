@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Checkmarx/cx-scan-remediate/internal/findings"
 	"github.com/cxpsemea/Cx1ClientGo"
 	"github.com/sirupsen/logrus"
 )
@@ -39,17 +40,10 @@ func parseLogLevel(s string) (logrus.Level, error) {
 	}
 }
 
-// enginesInScope records which engines the run will triage and remediate.
-type enginesInScope struct {
-	SAST bool
-	IAC  bool // not supported by AI Triage/Remediation yet; always false
-	SCA  bool
-}
-
 // parseEngines turns the -engine list (case-insensitive, whitespace-tolerant) into the engines
 // to process. Unknown or unsupported engines are an error, so a typo can't silently drop one.
-func parseEngines(list string) (enginesInScope, error) {
-	var in enginesInScope
+func parseEngines(list string) (findings.Engines, error) {
+	var in findings.Engines
 	seen := 0
 	for e := range strings.SplitSeq(list, ",") {
 		e = strings.ToUpper(strings.TrimSpace(e))
@@ -91,36 +85,36 @@ func checkCount(logger *logrus.Logger, name string, n int) (int, error) {
 // so a pipeline can configure the tool without a command line. The Checkmarx One ones are the
 // names the AST CLI reads too.
 var flagEnv = map[string][]string{
-	"log-level":              {"CXSR_LOG_LEVEL"},
-	"report-file":            {"CXSR_REPORT_FILE"},
-	"source-dir":             {"CXSR_SOURCE_DIR"},
-	"engines":                {"CXSR_ENGINES"},
-	"severities":             {"CXSR_SEVERITIES"},
-	"triage-count":           {"CXSR_TRIAGE_COUNT"},
-	"remediate-count":        {"CXSR_REMEDIATE_COUNT"},
-	"triage-batch-size":      {"CXSR_TRIAGE_BATCH_SIZE"},
-	"remediation-batch-size": {"CXSR_REMEDIATION_BATCH_SIZE"},
-	"timeout":                {"CXSR_TIMEOUT"},
+	"log-level":                {"CXSR_LOG_LEVEL"},
+	"report-file":              {"CXSR_REPORT_FILE"},
+	"source-dir":               {"CXSR_SOURCE_DIR"},
+	"engines":                  {"CXSR_ENGINES"},
+	"severities":               {"CXSR_SEVERITIES"},
+	"triage-count":             {"CXSR_TRIAGE_COUNT"},
+	"remediate-count":          {"CXSR_REMEDIATE_COUNT"},
+	"triage-batch-size":        {"CXSR_TRIAGE_BATCH_SIZE"},
+	"remediation-batch-size":   {"CXSR_REMEDIATION_BATCH_SIZE"},
+	"timeout":                  {"CXSR_TIMEOUT"},
 	"ai-poll-interval":         {"CXSR_AI_POLL_INTERVAL"},
 	"ai-poll-timeout":          {"CXSR_AI_POLL_TIMEOUT"},
 	"ai-details-poll-interval": {"CXSR_AI_DETAILS_POLL_INTERVAL"},
 	"ai-details-poll-timeout":  {"CXSR_AI_DETAILS_POLL_TIMEOUT"},
-	"github-token":           {"GITHUB_TOKEN"},
-	"repo":                   {"CXSR_REPO"},
-	"base-branch":            {"CXSR_BASE_BRANCH"},
-	"pr-branch":              {"CXSR_PR_BRANCH"},
-	"proxy":                  {"CXSR_PROXY"},
-	"insecure":               {"CXSR_INSECURE"},
-	"ca-cert":                {"CXSR_CA_CERT"},
-	"no-keep-alive":          {"CXSR_NO_KEEP_ALIVE"},
-	"keep-temp":              {"CXSR_KEEP_TEMP"},
-	"user-agent":             {"CXSR_USER_AGENT"},
-	"apikey":                 {"CX_APIKEY"},
-	"client-id":              {"CX_CLIENT_ID"},
-	"client-secret":          {"CX_CLIENT_SECRET"},
-	"base-uri":               {"CX_BASE_URI"},
-	"base-auth-uri":          {"CX_BASE_AUTH_URI"},
-	"tenant":                 {"CX_TENANT"},
+	"github-token":             {"GITHUB_TOKEN"},
+	"repo":                     {"CXSR_REPO"},
+	"base-branch":              {"CXSR_BASE_BRANCH"},
+	"pr-branch":                {"CXSR_PR_BRANCH"},
+	"proxy":                    {"CXSR_PROXY"},
+	"insecure":                 {"CXSR_INSECURE"},
+	"ca-cert":                  {"CXSR_CA_CERT"},
+	"no-keep-alive":            {"CXSR_NO_KEEP_ALIVE"},
+	"keep-temp":                {"CXSR_KEEP_TEMP"},
+	"user-agent":               {"CXSR_USER_AGENT"},
+	"apikey":                   {"CX_APIKEY"},
+	"client-id":                {"CX_CLIENT_ID"},
+	"client-secret":            {"CX_CLIENT_SECRET"},
+	"base-uri":                 {"CX_BASE_URI"},
+	"base-auth-uri":            {"CX_BASE_AUTH_URI"},
+	"tenant":                   {"CX_TENANT"},
 }
 
 // documentEnv appends each flag's environment variables to its help text.

@@ -3,13 +3,15 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/Checkmarx/cx-scan-remediate/internal/findings"
 )
 
 func TestDescribeRun(t *testing.T) {
-	index := []resultIndex{
-		{Engine: "sca", AlternateID: "t1", State: "PROPOSED_NOT_EXPLOITABLE", AI: &aiAssessment{Exploitability: "NOT_EXPLOITABLE", Reachability: "REACHABLE"}},
-		{Engine: "sca", AlternateID: "t2", State: "PROPOSED_NOT_EXPLOITABLE", AI: &aiAssessment{Exploitability: "NOT_EXPLOITABLE", Reachability: "NOT_REACHABLE"}},
-		{Engine: "sca", AlternateID: "t3", State: "CONFIRMED", AI: &aiAssessment{Exploitability: "EXPLOITABLE", Reachability: "REACHABLE"}},
+	index := []findings.Finding{
+		{Engine: "sca", AlternateID: "t1", State: "PROPOSED_NOT_EXPLOITABLE", AI: &findings.Assessment{Exploitability: "NOT_EXPLOITABLE", Reachability: "REACHABLE"}},
+		{Engine: "sca", AlternateID: "t2", State: "PROPOSED_NOT_EXPLOITABLE", AI: &findings.Assessment{Exploitability: "NOT_EXPLOITABLE", Reachability: "NOT_REACHABLE"}},
+		{Engine: "sca", AlternateID: "t3", State: "CONFIRMED", AI: &findings.Assessment{Exploitability: "EXPLOITABLE", Reachability: "REACHABLE"}},
 		{Engine: "sca", AlternateID: "v1", State: "TO_VERIFY"},  // not triaged yet
 		{Engine: "sca", AlternateID: "v2", State: "TO_VERIFY"},  // not triaged yet
 		{Engine: "sast", AlternateID: "c1", State: "CONFIRMED"}, // remediation requested
@@ -35,7 +37,7 @@ func TestDescribeRun(t *testing.T) {
 }
 
 func TestDescribeRunNothingDone(t *testing.T) {
-	got := strings.Join(describeRun([]resultIndex{{Engine: "sca", AlternateID: "v1", State: "TO_VERIFY"}}, runCounters{Requested: map[string]bool{}, BranchExists: map[string]bool{}}), "\n")
+	got := strings.Join(describeRun([]findings.Finding{{Engine: "sca", AlternateID: "v1", State: "TO_VERIFY"}}, runCounters{Requested: map[string]bool{}, BranchExists: map[string]bool{}}), "\n")
 	if !strings.Contains(got, "no findings were triaged") || !strings.Contains(got, "1 To_Verify finding(s) not triaged yet, 0 Confirmed/Urgent") {
 		t.Errorf("unexpected summary:\n%s", got)
 	}

@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"flag"
 	"strings"
-	"time"
 	"testing"
+	"time"
 
 	"github.com/cxpsemea/Cx1ClientGo"
 	"github.com/sirupsen/logrus"

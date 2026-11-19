@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	"github.com/Checkmarx/cx-scan-remediate/internal/findings"
 	"github.com/cxpsemea/Cx1ClientGo"
 )
 
@@ -15,8 +16,8 @@ func TestRemainingByEngine(t *testing.T) {
 		SAST: []Cx1ClientGo.ScanSASTResult{
 			{ScanResultBase: res("HIGH", "TO_VERIFY")},
 			{ScanResultBase: res("CRITICAL", "PROPOSED_NOT_EXPLOITABLE")}, // still counts
-			{ScanResultBase: res("HIGH", "NOT_EXPLOITABLE")},               // excluded
-			{ScanResultBase: res("MEDIUM", "TO_VERIFY")},                   // wrong severity
+			{ScanResultBase: res("HIGH", "NOT_EXPLOITABLE")},              // excluded
+			{ScanResultBase: res("MEDIUM", "TO_VERIFY")},                  // wrong severity
 		},
 		SCA: []Cx1ClientGo.ScanSCAResult{
 			{ScanResultBase: res("CRITICAL", "confirmed")},
@@ -27,7 +28,7 @@ func TestRemainingByEngine(t *testing.T) {
 		Unknown: []Cx1ClientGo.ScanUnknownResult{{ScanResultBase: res("CRITICAL", "URGENT")}},
 	}
 	sev := map[string]bool{"CRITICAL": true, "HIGH": true}
-	got := remainingByEngine(rs, sev, enginesInScope{SAST: true, SCA: true})
+	got := remainingByEngine(rs, sev, findings.Engines{SAST: true, SCA: true})
 
 	want := []engineCount{
 		{"SAST", 2, true},
@@ -50,7 +51,7 @@ func TestRemainingByEngine(t *testing.T) {
 
 func TestRemainingByEngineEngineNotSelected(t *testing.T) {
 	rs := &Cx1ClientGo.ScanResultSet{SCA: []Cx1ClientGo.ScanSCAResult{{ScanResultBase: res("HIGH", "TO_VERIFY")}}}
-	got := remainingByEngine(rs, map[string]bool{"HIGH": true}, enginesInScope{SAST: true})
+	got := remainingByEngine(rs, map[string]bool{"HIGH": true}, findings.Engines{SAST: true})
 	if len(got) != 1 || got[0].Handled {
 		t.Errorf("SCA excluded via -engine must be reported as not handled, got %+v", got)
 	}

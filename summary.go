@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Checkmarx/cx-scan-remediate/internal/findings"
 	"github.com/cxpsemea/Cx1ClientGo"
 	"github.com/sirupsen/logrus"
 )
@@ -23,7 +24,7 @@ type engineCount struct {
 //
 // This approximates what the AST CLI's threshold counted, from the state recorded in the scan
 // report; it does not change as this run triages findings or opens pull requests.
-func remainingByEngine(results *Cx1ClientGo.ScanResultSet, severities map[string]bool, inScope enginesInScope) []engineCount {
+func remainingByEngine(results *Cx1ClientGo.ScanResultSet, severities map[string]bool, inScope findings.Engines) []engineCount {
 	counts := []engineCount{}
 	add := func(engine string, handled bool, n int) {
 		if n > 0 {
@@ -31,7 +32,7 @@ func remainingByEngine(results *Cx1ClientGo.ScanResultSet, severities map[string
 		}
 	}
 	remaining := func(severity, state string) bool {
-		return severities[severity] && normalizeState(state) != stateNotExploitable
+		return severities[severity] && findings.NormalizeState(state) != findings.StateNotExploitable
 	}
 
 	n := 0
@@ -112,7 +113,7 @@ func formatRemaining(counts []engineCount) string {
 
 // logRemainingSummary logs what the run did and what in the report still counts against the
 // threshold. It logs nothing if the report has not been read (results is nil).
-func logRemainingSummary(logger *logrus.Logger, results *Cx1ClientGo.ScanResultSet, severities map[string]bool, engines enginesInScope, index []resultIndex, c runCounters) {
+func logRemainingSummary(logger *logrus.Logger, results *Cx1ClientGo.ScanResultSet, severities map[string]bool, engines findings.Engines, index []findings.Finding, c runCounters) {
 	if results == nil {
 		return
 	}
@@ -130,13 +131,11 @@ type runCounters struct {
 	PRsOpened    int
 }
 
-func findingKey(f *resultIndex) string { return f.Engine + "/" + f.AlternateID }
-
 // describeRun summarizes what this run did with the findings it handles (the --engines and
 // --severities selection): what AI Triage concluded, what was remediated, and what is still waiting
 // for a later run. Nothing here is a priority or a gate; every in-scope finding has to be
 // addressed eventually, so the order in which runs get to them does not matter.
-func describeRun(index []resultIndex, c runCounters) []string {
+func describeRun(index []findings.Finding, c runCounters) []string {
 	triaged := map[string]int{}
 	nTriaged, notTriaged, verified, notRemediated := 0, 0, 0, 0
 	for i := range index {
@@ -144,12 +143,12 @@ func describeRun(index []resultIndex, c runCounters) []string {
 		if f.AI != nil {
 			nTriaged++
 			triaged[f.State]++
-		} else if f.State == stateToVerify {
+		} else if f.State == findings.StateToVerify {
 			notTriaged++
 		}
-		if isVerified(f) {
+		if findings.IsVerified(f) {
 			verified++
-			if !c.Requested[findingKey(f)] && !c.BranchExists[findingKey(f)] {
+			if !c.Requested[findings.Key(f)] && !c.BranchExists[findings.Key(f)] {
 				notRemediated++
 			}
 		}

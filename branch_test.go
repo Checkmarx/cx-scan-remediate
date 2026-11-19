@@ -6,10 +6,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Checkmarx/cx-scan-remediate/internal/findings"
 )
 
 func TestBranchFor(t *testing.T) {
-	f := &resultIndex{Engine: "sast", AlternateID: "HLg6+Y/o="}
+	f := &findings.Finding{Engine: "sast", AlternateID: "HLg6+Y/o="}
 	cases := []struct {
 		name string
 		pr   prOptions

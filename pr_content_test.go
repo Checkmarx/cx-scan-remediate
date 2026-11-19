@@ -5,6 +5,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/Checkmarx/cx-scan-remediate/internal/findings"
 	"github.com/cxpsemea/Cx1ClientGo"
 )
 
@@ -47,7 +48,7 @@ func TestSelectResult(t *testing.T) {
 }
 
 func TestFindingLink(t *testing.T) {
-	f := &resultIndex{AlternateID: "ab+/=c"}
+	f := &findings.Finding{AlternateID: "ab+/=c"}
 	if got, want := findingLink("https://eu.ast.checkmarx.net/riskhub/p1", f), "https://eu.ast.checkmarx.net/riskhub/p1?resultId=ab%2B%2F%3Dc"; got != want {
 		t.Errorf("findingLink = %q, want %q", got, want)
 	}
@@ -57,7 +58,7 @@ func TestFindingLink(t *testing.T) {
 }
 
 func TestBuildPRContent(t *testing.T) {
-	f := &resultIndex{Engine: "sast", Severity: "HIGH", AlternateID: "id1"}
+	f := &findings.Finding{Engine: "sast", Severity: "HIGH", AlternateID: "id1"}
 	r := resultWith("id1", "Fix SQL injection", "Use a prepared statement")
 	r.Data.Analysis.What, r.Data.Analysis.Why, r.Data.Analysis.How = "what", "why", "how"
 
@@ -84,7 +85,7 @@ func TestBuildPRContent(t *testing.T) {
 }
 
 func TestBuildPRContentLimits(t *testing.T) {
-	f := &resultIndex{Engine: "sca", Severity: "CRITICAL", AlternateID: "id1"}
+	f := &findings.Finding{Engine: "sca", Severity: "CRITICAL", AlternateID: "id1"}
 	long := strings.Repeat("é", 500) + "\nsecond line"
 	r := resultWith("id1", long, strings.Repeat("s", 100000))
 

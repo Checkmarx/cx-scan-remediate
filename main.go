@@ -1,52 +1,24 @@
 package main
 
 import (
-	"cmp"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/Checkmarx/cx-scan-remediate/internal/findings"
+	"github.com/Checkmarx/cx-scan-remediate/internal/patch"
+	"github.com/Checkmarx/cx-scan-remediate/internal/transport"
 	"github.com/cxpsemea/Cx1ClientGo"
 	"github.com/sirupsen/logrus"
 	easy "github.com/t-tomalak/logrus-easy-formatter"
 )
-
-type resultIndex struct {
-	Engine       string
-	Severity     string
-	AlternateID  string
-	SimilarityID string
-	// PackageID is the SCA package identifier; only set for SCA results.
-	PackageID string
-	State     string
-	// AI is what AI Triage said about this finding, if it was triaged in this run. It is only an
-	// expectation to compare the platform's state against, never used as the state.
-	AI *aiAssessment
-	// Refreshed is true if State was last confirmed against the results re-read from the platform
-	// (the finding was found in them), as opposed to being the state from the scan report.
-	Refreshed bool
-	// Result is the originating results.SAST / IAC / SCA entry, kept for its String() in log output.
-	Result fmt.Stringer
-}
-
-// String describes the finding using the underlying result's own String(), falling back to the
-// basic identifiers if no result is attached.
-func (r resultIndex) String() string {
-	if r.Result != nil {
-		return r.Result.String()
-	}
-	return fmt.Sprintf("No linked result for %s %s %s", r.Engine, r.Severity, r.AlternateID)
-}
 
 // Process exit codes. This tool only runs after the scan has broken the pipeline's threshold,
 // and nothing it does can clear that: AI Triage only ever proposes "Not Exploitable" (a human
@@ -85,8 +57,8 @@ type runState struct {
 	// set once the report is parsed
 	results    *Cx1ClientGo.ScanResultSet
 	severities map[string]bool
-	engines    enginesInScope
-	index      []resultIndex // the findings this tool handles; their states are the current ones
+	engines    findings.Engines
+	index      []findings.Finding // the findings this tool handles; their states are the current ones
 }
 
 // finish ends the run with a non-zero exit code so the calling pipeline still fails.
@@ -187,7 +159,7 @@ func runMain(ctx context.Context, args []string, stdout io.Writer) int {
 	}
 	logger.SetLevel(level)
 
-	severities, err := parseSeverities(*severity)
+	severities, err := findings.ParseSeverities(*severity)
 	if err != nil {
 		return usageError(logger, "Invalid --severities: %s", err)
 	}
@@ -206,11 +178,11 @@ func runMain(ctx context.Context, args []string, stdout io.Writer) int {
 		return usageError(logger, "--remediate-count requires a GitHub token (--github-token or GITHUB_TOKEN) to publish pull requests")
 	}
 
-	transport, err := newTransport(*proxy, *insecure, *caCert)
+	httpTransport, err := transport.New(*proxy, *insecure, *caCert)
 	if err != nil {
 		return fatalError(logger, "Invalid proxy/TLS configuration: %s", err)
 	}
-	transport.DisableKeepAlives = *noKeepAlive
+	httpTransport.DisableKeepAlives = *noKeepAlive
 	if *noKeepAlive {
 		logger.Info("HTTP keep-alives disabled (--no-keep-alive)")
 	}
@@ -225,7 +197,7 @@ func runMain(ctx context.Context, args []string, stdout io.Writer) int {
 	}
 
 	cxclient, err := Cx1ClientGo.NewClientWithOptions(Cx1ClientGo.Cx1ClientConfiguration{
-		HttpClient:  &http.Client{Transport: transport},
+		HttpClient:  &http.Client{Transport: httpTransport},
 		Logger:      logger,
 		HTTPHeaders: http.Header{"User-Agent": []string{*userAgent}},
 		Auth: Cx1ClientGo.Cx1ClientAuth{
@@ -267,7 +239,7 @@ func runMain(ctx context.Context, args []string, stdout io.Writer) int {
 	// created before any AI Triage or Remediation credits are spent.
 	pr := prOptions{
 		Token:      *githubToken,
-		Transport:  transport,
+		Transport:  httpTransport,
 		Repo:       *repoFlag,
 		BaseBranch: *baseBranchFlag,
 		Branch:     *prBranchFlag,
@@ -285,115 +257,19 @@ func runMain(ctx context.Context, args []string, stdout io.Writer) int {
 		}
 	}
 
-	inScopeCount := 0
-
 	logger.Infof("Scan has %d SAST and %d SCA", len(results.SAST), len(results.SCA))
 
 	// remembered so that finish can report what still counts against the threshold, per engine
 	r.results, r.severities, r.engines = &results, severities, inScope
 
-	if inScope.SAST {
-		for _, r := range results.SAST {
-			if severities[r.Severity] {
-				inScopeCount++
-			}
-		}
-	}
-	if inScope.IAC {
-		for _, r := range results.IAC {
-			if severities[r.Severity] {
-				inScopeCount++
-			}
-		}
-	}
-	if inScope.SCA {
-		for _, r := range results.SCA {
-			if severities[r.Severity] {
-				inScopeCount++
-			}
-		}
-	}
-
-	if inScopeCount == 0 {
-		logger.Warn("No results are in a supported engine/severity for AI Triage or Remediation; the threshold break must be resolved manually")
-		return r.finish(deepLink)
-	}
-
-	logger.Infof("Parsed scan ID %s report %s: %d results found with %d in scope", scanId, *resultsFile, count, inScopeCount)
-	index := make([]resultIndex, inScopeCount)
-
-	// internal priority list: SAST, IAC, SCA
-	counter := 0
-	if inScope.SAST {
-		for _, r := range results.SAST {
-			if !severities[r.Severity] {
-				continue
-			}
-			index[counter] = resultIndex{
-				Engine:       "sast",
-				Severity:     r.Severity,
-				AlternateID:  r.AlternateID,
-				State:        r.State,
-				SimilarityID: r.SimilarityID,
-				Result:       r,
-			}
-			counter++
-		}
-	}
-
-	if inScope.IAC {
-		for _, r := range results.IAC {
-			if !severities[r.Severity] {
-				continue
-			}
-			index[counter] = resultIndex{
-				Engine:       "iac",
-				Severity:     r.Severity,
-				AlternateID:  r.AlternateID,
-				State:        r.State,
-				SimilarityID: r.SimilarityID,
-				Result:       r,
-			}
-			counter++
-		}
-	}
-
-	if inScope.SCA {
-		for _, r := range results.SCA {
-			if !severities[r.Severity] {
-				continue
-			}
-			index[counter] = resultIndex{
-				Engine:       "sca",
-				Severity:     r.Severity,
-				AlternateID:  r.AlternateID,
-				State:        r.State,
-				SimilarityID: r.SimilarityID,
-				Result:       r,
-				PackageID:    r.Data.PackageIdentifier,
-			}
-			counter++
-		}
-	}
-
+	index := findings.Collect(&results, severities, inScope)
 	if len(index) == 0 {
 		logger.Warn("No results are in a supported engine/severity for AI Triage or Remediation; the threshold break must be resolved manually")
 		return r.finish(deepLink)
 	}
 
-	for i := range index {
-		index[i].State = resolveState(logger, "Scan report entry "+index[i].String(), index[i].State, index[i].State)
-	}
-
-	slices.SortFunc(index, func(a, b resultIndex) int {
-		sev := sevcmp(a.Severity, b.Severity)
-		if sev != 0 {
-			return sev
-		}
-
-		return cmp.Compare(a.AlternateID, b.AlternateID)
-	})
-
+	logger.Infof("Parsed scan ID %s report %s: %d results found with %d in scope", scanId, *resultsFile, count, len(index))
+	findings.Prioritize(logger, index)
 	r.index = index // the states in it are updated as the run goes on; finish summarizes them
 
 	clientVars := cxclient.GetClientVars()
@@ -407,7 +283,7 @@ func runMain(ctx context.Context, args []string, stdout io.Writer) int {
 	}
 
 	if *numTriage > 0 {
-		candidates := pickFindings(index, *numTriage, func(f *resultIndex) bool { return canTriage(logger, f) })
+		candidates := findings.Pick(index, *numTriage, func(f *findings.Finding) bool { return findings.CanTriage(logger, f) })
 		batchSize := clampBatchSize(logger, "triage-batch-size", *triageBatch)
 		logger.Infof("Will auto-triage %d results (requested %d) in batches of up to %d", len(candidates), *numTriage, batchSize)
 
@@ -438,8 +314,8 @@ func runMain(ctx context.Context, args []string, stdout io.Writer) int {
 			r.errs.Errorf("Cannot check for existing branches (%s); skipping AI Remediation", err)
 			return r.finish(deepLink)
 		}
-		eligible := func(f *resultIndex) bool {
-			if !isVerified(f) {
+		eligible := func(f *findings.Finding) bool {
+			if !findings.IsVerified(f) {
 				return false
 			}
 			branch := branchFor(pr, f)
@@ -449,16 +325,16 @@ func runMain(ctx context.Context, args []string, stdout io.Writer) int {
 				r.errs.Errorf("Could not check whether branch %q exists for %s: %s; skipping it", branch, f, err)
 				return false
 			case exists:
-				r.counters.BranchExists[findingKey(f)] = true
+				r.counters.BranchExists[findings.Key(f)] = true
 				logger.Infof("Skipping %s: branch %q already exists in %s/%s (remediated by an earlier run); delete the branch to retry", f, branch, owner, repo)
 				return false
 			}
 			return true
 		}
 
-		candidates := pickFindings(index, *numRemediate, eligible)
+		candidates := findings.Pick(index, *numRemediate, eligible)
 		for _, c := range candidates {
-			r.counters.Requested[findingKey(c)] = true
+			r.counters.Requested[findings.Key(c)] = true
 		}
 		batchSize := clampBatchSize(logger, "remediation-batch-size", *remediationBatch)
 		logger.Infof("Will auto-remediate %d results (requested %d, out of %d) in batches of up to %d", len(candidates), *numRemediate, len(index), batchSize)
@@ -491,45 +367,10 @@ func clampBatchSize(logger *logrus.Logger, name string, n int) int {
 	return n
 }
 
-// pickFindings returns pointers to the first limit findings (in the index's priority order)
-// that satisfy eligible. The pointers alias index, so later state updates are visible to it.
-func pickFindings(index []resultIndex, limit int, eligible func(*resultIndex) bool) []*resultIndex {
-	var picked []*resultIndex
-	for i := range index {
-		if len(picked) >= limit {
-			break
-		}
-		if eligible(&index[i]) {
-			picked = append(picked, &index[i])
-		}
-	}
-	return picked
-}
-
-// canTriage reports whether a finding should be submitted to AI Triage: it must still be
-// TO_VERIFY, and an SCA finding must carry its package identifier, which is part of the job's
-// key. Without it the platform has no such job, and polling would just wait out the timeout.
-func canTriage(logger *logrus.Logger, f *resultIndex) bool {
-	if f.State != stateToVerify {
-		return false
-	}
-	if f.Engine == "sca" && (f.SimilarityID == "" || f.PackageID == "") {
-		logger.Warnf("Skipping AI Triage for %s: the report entry has no similarity ID or package identifier", f)
-		return false
-	}
-	return true
-}
-
-// isVerified reports whether a finding has been confirmed as a real issue, the only states
-// eligible for AI Remediation. To_Verify, Not_Exploitable and the like are never remediated.
-func isVerified(f *resultIndex) bool {
-	return f.State == stateConfirmed || f.State == stateUrgent
-}
-
 // toBuckets groups findings by engine into the request format shared by the AI endpoints.
-func toBuckets(findings []*resultIndex) []Cx1ClientGo.AIRequestBucket {
+func toBuckets(batch []*findings.Finding) []Cx1ClientGo.AIRequestBucket {
 	var buckets []Cx1ClientGo.AIRequestBucket
-	for _, f := range findings {
+	for _, f := range batch {
 		i := slices.IndexFunc(buckets, func(b Cx1ClientGo.AIRequestBucket) bool { return b.Engine == f.Engine })
 		if i < 0 {
 			buckets = append(buckets, Cx1ClientGo.AIRequestBucket{Engine: f.Engine})
@@ -542,7 +383,7 @@ func toBuckets(findings []*resultIndex) []Cx1ClientGo.AIRequestBucket {
 
 // triageBatchOf submits the findings to AI Triage in a single request, then waits for each
 // in turn. The jobs run concurrently on the platform, so only the first wait is long.
-func triageBatchOf(cxclient *Cx1ClientGo.Cx1Client, logger *logrus.Logger, errs *errorRecorder, scan *Cx1ClientGo.Scan, batch []*resultIndex, aiBudget budget, vars Cx1ClientGo.ClientVars) {
+func triageBatchOf(cxclient *Cx1ClientGo.Cx1Client, logger *logrus.Logger, errs *errorRecorder, scan *Cx1ClientGo.Scan, batch []*findings.Finding, aiBudget budget, vars Cx1ClientGo.ClientVars) {
 	for _, finding := range batch {
 		logger.Infof("AI Auto-Triage %s finding: %s", finding.Severity, finding)
 	}
@@ -583,9 +424,9 @@ func triageBatchOf(cxclient *Cx1ClientGo.Cx1Client, logger *logrus.Logger, errs 
 				continue
 			}
 			logger.Infof("AI Triage results: exploitability %s, reachability %s", details.Analysis.Exploitability.Status, details.Analysis.Reachability.Status)
-			finding.AI = &aiAssessment{Exploitability: details.Analysis.Exploitability.Status, Reachability: details.Analysis.Reachability.Status}
+			finding.AI = &findings.Assessment{Exploitability: details.Analysis.Exploitability.Status, Reachability: details.Analysis.Reachability.Status}
 			if !useRefetchedStates {
-				finding.State = aiTriageState(logger, "AI Triage of "+finding.String(), *finding.AI, finding.State)
+				finding.State = findings.AITriageState(logger, "AI Triage of "+finding.String(), *finding.AI, finding.State)
 			}
 			continue
 		}
@@ -596,9 +437,9 @@ func triageBatchOf(cxclient *Cx1ClientGo.Cx1Client, logger *logrus.Logger, errs 
 			continue
 		}
 		logger.Infof("AI Triage results: %s (reachability %s, exploitability %s, attackability %s)", details.TriageStatus, details.ReachabilityStatus, details.ExploitabilityStatus, details.AttackabilityStatus)
-		finding.AI = &aiAssessment{Exploitability: details.TriageStatus, Reachability: details.ReachabilityStatus, ExploitabilityStatus: details.ExploitabilityStatus, AttackabilityStatus: details.AttackabilityStatus}
+		finding.AI = &findings.Assessment{Exploitability: details.TriageStatus, Reachability: details.ReachabilityStatus, ExploitabilityStatus: details.ExploitabilityStatus, AttackabilityStatus: details.AttackabilityStatus}
 		if !useRefetchedStates {
-			finding.State = aiTriageState(logger, "AI Triage of "+finding.String(), *finding.AI, finding.State)
+			finding.State = findings.AITriageState(logger, "AI Triage of "+finding.String(), *finding.AI, finding.State)
 		}
 	}
 }
@@ -610,7 +451,7 @@ func triageBatchOf(cxclient *Cx1ClientGo.Cx1Client, logger *logrus.Logger, errs 
 // Every remediation is computed in memory against the untouched source tree and published as
 // its own independent pull request, so remediations that touch the same file do not interfere
 // with one another. The source tree is never modified.
-func remediateBatchOf(cxclient *Cx1ClientGo.Cx1Client, logger *logrus.Logger, errs *errorRecorder, scan *Cx1ClientGo.Scan, batch []*resultIndex, sourceDir string, keepTemp bool, pr prOptions, aiBudget budget, vars Cx1ClientGo.ClientVars, counters *runCounters) {
+func remediateBatchOf(cxclient *Cx1ClientGo.Cx1Client, logger *logrus.Logger, errs *errorRecorder, scan *Cx1ClientGo.Scan, batch []*findings.Finding, sourceDir string, keepTemp bool, pr prOptions, aiBudget budget, vars Cx1ClientGo.ClientVars, counters *runCounters) {
 	for _, finding := range batch {
 		logger.Infof("AI Auto-Remediate finding: %s", finding)
 	}
@@ -651,7 +492,7 @@ func remediateBatchOf(cxclient *Cx1ClientGo.Cx1Client, logger *logrus.Logger, er
 		// only this finding's result is applied, so the pull request holds exactly its fix
 		details.Results = []Cx1ClientGo.AIRemediationResult{result}
 
-		changes, err := applyRemediationInMemory(logger, details, sourceDir, keepTemp)
+		changes, err := patch.Apply(logger, details, sourceDir, keepTemp)
 		if err != nil {
 			errs.Errorf("Skipping remediation for %s %s finding %s: %s", finding.Severity, finding.Engine, finding, err)
 			continue
@@ -680,104 +521,6 @@ func selectResult(details Cx1ClientGo.AIRemediationDetails, alternateID string) 
 		return result, fmt.Errorf("remediation %s reported an error: %s", result.RemediationID, *result.Data.Error)
 	}
 	return result, nil
-}
-
-var sevmap = map[string]int{
-	"CRITICAL": 0,
-	"HIGH":     1,
-	"MEDIUM":   2,
-	"LOW":      3,
-	"INFO":     4,
-}
-
-// parseSeverities turns a comma-separated severity list (case-insensitive) into a set of backend severity values.
-func parseSeverities(list string) (map[string]bool, error) {
-	set := map[string]bool{}
-	for _, s := range strings.Split(list, ",") {
-		s = strings.ToUpper(strings.TrimSpace(s))
-		if s == "" {
-			continue
-		}
-		if _, ok := sevmap[s]; !ok {
-			return nil, fmt.Errorf("unknown severity %q, expected any of CRITICAL,HIGH,MEDIUM,LOW,INFO", s)
-		}
-		set[s] = true
-	}
-	if len(set) == 0 {
-		return nil, fmt.Errorf("no severities specified")
-	}
-	return set, nil
-}
-
-// prioritize findings by highest-severity first
-func sevcmp(sev1, sev2 string) int {
-	s1, ok1 := sevmap[sev1]
-	s2, ok2 := sevmap[sev2]
-
-	if ok1 && !ok2 {
-		return -1
-	}
-	if ok2 && !ok1 {
-		return 1
-	}
-	if !ok1 && !ok2 {
-		return 0
-	}
-
-	if s1 < s2 {
-		return -1
-	}
-	if s1 == s2 {
-		return 0
-	}
-	return 1
-}
-
-// responseHeaderTimeout bounds the wait for a server's response headers after the request has
-// been sent. It does not limit reading the body, so long-lived event streams are unaffected once
-// they have started.
-const responseHeaderTimeout = 120 * time.Second
-
-// newTransport builds the HTTP transport for calls to Checkmarx One. TLS verification stays on unless
-// insecure is set; caCertFile adds extra trusted CAs (e.g. a TLS-inspecting proxy's) to the
-// system pool.
-func newTransport(proxy string, insecure bool, caCertFile string) (*http.Transport, error) {
-	if insecure && caCertFile != "" {
-		return nil, fmt.Errorf("--insecure and --ca-cert are mutually exclusive")
-	}
-
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	// Go's default transport has no limit on how long a server may take to start responding,
-	// so a server that accepts the connection and then stalls would hang the run forever.
-	transport.ResponseHeaderTimeout = responseHeaderTimeout
-
-	if proxy != "" {
-		proxyURL, err := url.Parse(proxy)
-		if err != nil || proxyURL.Scheme == "" || proxyURL.Host == "" {
-			return nil, fmt.Errorf("invalid -proxy %q: expected a URL such as http://host:port", proxy)
-		}
-		transport.Proxy = http.ProxyURL(proxyURL)
-	}
-
-	switch {
-	case insecure:
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	case caCertFile != "":
-		pem, err := os.ReadFile(caCertFile)
-		if err != nil {
-			return nil, fmt.Errorf("reading --ca-cert: %w", err)
-		}
-		pool, err := x509.SystemCertPool()
-		if err != nil || pool == nil {
-			pool = x509.NewCertPool()
-		}
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("--ca-cert %s contains no valid PEM certificates", caCertFile)
-		}
-		transport.TLSClientConfig = &tls.Config{RootCAs: pool}
-	}
-
-	return transport, nil
 }
 
 // valueOrEnv returns the flag value, or the first non-empty of the environment variables when

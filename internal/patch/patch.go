@@ -1,4 +1,6 @@
-package main
+// Package patch applies an AI Remediation to a copy of the source files it touches, producing the
+// changed files in memory. The source tree itself is never modified.
+package patch
 
 import (
 	"bytes"
@@ -18,9 +20,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// patchedFile is the complete post-remediation content of one file: Path is where it
+// File is the complete post-remediation content of one file: Path is where it
 // lives in the repo (forward-slash, relative), Content is what it should contain.
-type patchedFile struct {
+type File struct {
 	Path    string
 	Content []byte
 	// Executable is set when the file in the source directory has an executable bit, so that
@@ -29,11 +31,11 @@ type patchedFile struct {
 	Executable bool
 }
 
-// applyRemediationInMemory computes the result of applying a remediation to the source tree
-// rooted at baseDir, without modifying baseDir. With keepTemp (--keep-temp) the scratch directory,
-// which holds copies of the patched source files and the diffs, is kept instead of deleted. File-change diffs are applied with "git apply"
-// inside a throwaway copy of just the files they touch; generated test files come back from
-// the platform as full content and are used as-is.
+// Apply computes the result of applying a remediation to the source tree rooted at baseDir,
+// without modifying baseDir. With keepTemp (--keep-temp) the scratch directory, which holds
+// copies of the patched source files and the diffs, is kept instead of deleted. File-change diffs
+// are applied with "git apply" inside a throwaway copy of just the files they touch; generated
+// test files come back from the platform as full content and are used as-is.
 //
 // Because baseDir is never written to, every remediation is computed against the same
 // pristine files regardless of what was remediated before it, so several remediations that
@@ -41,7 +43,7 @@ type patchedFile struct {
 //
 // The remediation is all-or-nothing: if any diff cannot be applied an error is returned and
 // nothing is produced, since a half-applied fix is worse than none.
-func applyRemediationInMemory(logger *logrus.Logger, details Cx1ClientGo.AIRemediationDetails, baseDir string, keepTemp bool) ([]patchedFile, error) {
+func Apply(logger *logrus.Logger, details Cx1ClientGo.AIRemediationDetails, baseDir string, keepTemp bool) ([]File, error) {
 	root, err := os.MkdirTemp("", "cx-remediate-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create scratch directory: %w", err)
@@ -113,9 +115,9 @@ func applyRemediationInMemory(logger *logrus.Logger, details Cx1ClientGo.AIRemed
 	}
 	maps.Copy(changed, generated)
 
-	files := make([]patchedFile, 0, len(changed))
+	files := make([]File, 0, len(changed))
 	for _, rel := range slices.Sorted(maps.Keys(changed)) {
-		files = append(files, patchedFile{Path: rel, Content: changed[rel], Executable: isExecutable(baseDir, rel)})
+		files = append(files, File{Path: rel, Content: changed[rel], Executable: isExecutable(baseDir, rel)})
 	}
 	return files, nil
 }

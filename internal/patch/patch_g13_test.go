@@ -1,4 +1,4 @@
-package main
+package patch
 
 import (
 	"os"
@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Checkmarx/cx-scan-remediate/internal/testutil"
 	"github.com/cxpsemea/Cx1ClientGo"
 )
 
@@ -16,11 +17,11 @@ func fileChange(path, diff string) Cx1ClientGo.AIRemediationFileChange {
 
 // An LF diff must apply to a CRLF file, and the file must stay CRLF throughout.
 func TestApplyToCRLFSource(t *testing.T) {
-	requireGit(t)
+	testutil.RequireGit(t)
 	base := t.TempDir()
-	writeFile(t, base, "a.txt", "one\r\ntwo\r\nthree\r\n")
+	testutil.WriteFile(t, base, "a.txt", "one\r\ntwo\r\nthree\r\n")
 
-	files, err := applyRemediationInMemory(testLogger(), remediationWith(fileChange("a.txt",
+	files, err := Apply(testutil.Logger(), remediationWith(fileChange("a.txt",
 		"--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n")), base, false)
 	if err != nil {
 		t.Fatalf("LF diff should apply to a CRLF file: %v", err)
@@ -32,7 +33,7 @@ func TestApplyToCRLFSource(t *testing.T) {
 
 // A file with LF endings must stay LF, whatever the machine's git settings are.
 func TestGitConfigIsIgnored(t *testing.T) {
-	requireGit(t)
+	testutil.RequireGit(t)
 	cfg := filepath.Join(t.TempDir(), "gitconfig")
 	if err := os.WriteFile(cfg, []byte("[core]\n\tautocrlf = true\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -40,7 +41,7 @@ func TestGitConfigIsIgnored(t *testing.T) {
 	t.Setenv("GIT_CONFIG_GLOBAL", cfg) // a developer's or runner's config, set after requireGit neutralized it
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "0")
 
-	files, err := applyRemediationInMemory(testLogger(), remediationWith(fileChange("new.txt",
+	files, err := Apply(testutil.Logger(), remediationWith(fileChange("new.txt",
 		"--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1,2 @@\n+x\n+y\n")), t.TempDir(), false)
 	if err != nil {
 		t.Fatal(err)
@@ -52,11 +53,11 @@ func TestGitConfigIsIgnored(t *testing.T) {
 
 // Diffs with bare paths (no a/ and b/ prefix) are accepted.
 func TestApplyWithoutPathPrefix(t *testing.T) {
-	requireGit(t)
+	testutil.RequireGit(t)
 	base := t.TempDir()
-	writeFile(t, base, "pom.xml", "a\nb\nc\n")
+	testutil.WriteFile(t, base, "pom.xml", "a\nb\nc\n")
 
-	files, err := applyRemediationInMemory(testLogger(), remediationWith(fileChange("pom.xml",
+	files, err := Apply(testutil.Logger(), remediationWith(fileChange("pom.xml",
 		"--- pom.xml\n+++ pom.xml\n@@ -1,3 +1,3 @@\n a\n-b\n+B\n c\n")), base, false)
 	if err != nil {
 		t.Fatalf("a bare-path diff should apply: %v", err)
@@ -71,16 +72,16 @@ func TestExecutableBitIsKept(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows does not record an executable bit")
 	}
-	requireGit(t)
+	testutil.RequireGit(t)
 	base := t.TempDir()
-	writeFile(t, base, "run.sh", "echo a\n")
-	writeFile(t, base, "plain.txt", "a\n")
+	testutil.WriteFile(t, base, "run.sh", "echo a\n")
+	testutil.WriteFile(t, base, "plain.txt", "a\n")
 	if err := os.Chmod(filepath.Join(base, "run.sh"), 0755); err != nil {
 		t.Fatal(err)
 	}
 
 	for path, want := range map[string]bool{"run.sh": true, "plain.txt": false} {
-		files, err := applyRemediationInMemory(testLogger(), remediationWith(fileChange(path,
+		files, err := Apply(testutil.Logger(), remediationWith(fileChange(path,
 			"--- a/"+path+"\n+++ b/"+path+"\n@@ -1 +1 @@\n-"+strings.TrimSpace(readFile(t, base, path))+"\n+changed\n")), base, false)
 		if err != nil {
 			t.Fatal(err)

@@ -5,6 +5,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Checkmarx/cx-scan-remediate/internal/findings"
 	"github.com/cxpsemea/Cx1ClientGo"
 	"github.com/sirupsen/logrus"
 )
@@ -27,7 +28,7 @@ func severityList(severities map[string]bool) []string {
 	for s := range severities {
 		list = append(list, s)
 	}
-	slices.SortFunc(list, sevcmp)
+	slices.SortFunc(list, findings.CompareSeverity)
 	return list
 }
 
@@ -56,7 +57,7 @@ func fetchResultsFor(cxclient *Cx1ClientGo.Cx1Client, scanID string, severities 
 // triage job; whatever is reported then is used, with any remaining mismatch logged again.
 // If the results cannot be fetched, the states are left as they were, so nothing becomes
 // eligible for remediation on a guess. The retry is skipped if the budget has less than wait left.
-func refreshStates(logger *logrus.Logger, fetch resultsFetcher, index []resultIndex, aiBudget budget, wait time.Duration, sleep func(time.Duration)) error {
+func refreshStates(logger *logrus.Logger, fetch resultsFetcher, index []findings.Finding, aiBudget budget, wait time.Duration, sleep func(time.Duration)) error {
 	fetched, err := fetch()
 	if err != nil {
 		return err
@@ -98,14 +99,14 @@ func logFetched(logger *logrus.Logger, fetched *Cx1ClientGo.ScanResultSet) {
 // triageMismatches describes each finding whose current state is not one AI Triage's assessment
 // implies (see expectedStates). Findings without an assessment, or without an expectation from
 // it, are never reported.
-func triageMismatches(index []resultIndex) []string {
+func triageMismatches(index []findings.Finding) []string {
 	var out []string
 	for i := range index {
 		f := &index[i]
 		if f.AI == nil || !f.Refreshed {
 			continue // no assessment to compare, or no platform state to compare it with
 		}
-		expected := expectedStates(*f.AI)
+		expected := findings.ExpectedStates(*f.AI)
 		if expected == nil || slices.Contains(expected, f.State) {
 			continue
 		}
@@ -121,7 +122,7 @@ func triageMismatches(index []resultIndex) []string {
 // unrecognized state is kept as it was, with a warning (see resolveState). Findings with no
 // matching result are reported once, together, and are marked as not refreshed, so that nothing
 // is concluded about them. It returns how many states changed and how many findings were not found.
-func applyFetchedStates(logger *logrus.Logger, index []resultIndex, fetched *Cx1ClientGo.ScanResultSet) (changed, missing int) {
+func applyFetchedStates(logger *logrus.Logger, index []findings.Finding, fetched *Cx1ClientGo.ScanResultSet) (changed, missing int) {
 	type altKey struct{ engine, alternateID string }
 	type simKey struct{ engine, similarityID, packageID string }
 	byAlt := map[altKey]string{}
@@ -157,7 +158,7 @@ func applyFetchedStates(logger *logrus.Logger, index []resultIndex, fetched *Cx1
 			continue
 		}
 		f.Refreshed = true
-		state := resolveState(logger, "Platform state of "+f.String(), raw, f.State)
+		state := findings.ResolveState(logger, "Platform state of "+f.String(), raw, f.State)
 		if state != f.State {
 			logger.Infof("State of %s is now %s (was %s)", f, state, f.State)
 			f.State = state

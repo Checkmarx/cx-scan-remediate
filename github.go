@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Checkmarx/cx-scan-remediate/internal/findings"
+	"github.com/Checkmarx/cx-scan-remediate/internal/patch"
 	"github.com/cxpsemea/Cx1ClientGo"
 	"github.com/google/go-github/v92/github"
 	"github.com/sirupsen/logrus"
@@ -22,7 +24,7 @@ type prPublishOptions struct {
 	CommitMessage string
 	PRTitle       string
 	PRBody        string
-	Files         []patchedFile
+	Files         []patch.File
 }
 
 // newGithubClient builds a go-github client authenticated with token. host is the repo's
@@ -241,7 +243,7 @@ type prOptions struct {
 // finding, so the same finding always gets the same branch and a later run can tell it has
 // already been remediated. --pr-branch is always a prefix, joined to the finding with "-" (or
 // directly, if the prefix already ends in "/" or "-").
-func branchFor(pr prOptions, f *resultIndex) string {
+func branchFor(pr prOptions, f *findings.Finding) string {
 	prefix := cmp.Or(pr.Branch, defaultBranchPrefix)
 	if !strings.HasSuffix(prefix, "/") && !strings.HasSuffix(prefix, "-") {
 		prefix += "-"
@@ -271,8 +273,8 @@ func githubTarget(pr prOptions) (*github.Client, string, string, error) {
 }
 
 // publishRemediationPR opens a GitHub pull request containing exactly the files produced by
-// applyRemediationInMemory. It reports whether a pull request was opened; failures are recorded in errs.
-func publishRemediationPR(logger *logrus.Logger, errs *errorRecorder, result Cx1ClientGo.AIRemediationResult, finding *resultIndex, applied []patchedFile, pr prOptions, branch string) bool {
+// patch.Apply. It reports whether a pull request was opened; failures are recorded in errs.
+func publishRemediationPR(logger *logrus.Logger, errs *errorRecorder, result Cx1ClientGo.AIRemediationResult, finding *findings.Finding, applied []patch.File, pr prOptions, branch string) bool {
 	if len(applied) == 0 {
 		logger.Info("Remediation produced no file changes; skipping pull request creation")
 		return false
@@ -320,7 +322,7 @@ func truncate(s string, n int) string {
 }
 
 // findingLink returns the Checkmarx One link to a finding, or "" if no project link is known.
-func findingLink(projectLink string, f *resultIndex) string {
+func findingLink(projectLink string, f *findings.Finding) string {
 	if projectLink == "" {
 		return ""
 	}
@@ -330,7 +332,7 @@ func findingLink(projectLink string, f *resultIndex) string {
 // buildPRContent builds the title and body of the pull request for a finding's remediation. The
 // title is a single line of at most maxPRTitle characters. The body names the finding, links to
 // it in Checkmarx One and states that the change is AI-generated and has to be reviewed.
-func buildPRContent(result Cx1ClientGo.AIRemediationResult, f *resultIndex, link string) (title, body string) {
+func buildPRContent(result Cx1ClientGo.AIRemediationResult, f *findings.Finding, link string) (title, body string) {
 	title = cmp.Or(result.Data.PRTitle, result.Data.Summary, "Checkmarx One AI remediation")
 	title = truncate(strings.Join(strings.Fields(title), " "), maxPRTitle)
 

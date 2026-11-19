@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Checkmarx/cx-scan-remediate/internal/patch"
 )
 
 // fakePublishServer answers the Git Data and pull request calls publishPR makes, recording them.
@@ -81,7 +83,7 @@ func (c *fakeCalls) add(s string) { c.mu.Lock(); c.list = append(c.list, s); c.m
 func TestPublishPR(t *testing.T) {
 	opts := prPublishOptions{
 		NewBranch: "cx-remediate/sast-1", CommitMessage: "fix", PRTitle: "t", PRBody: "b",
-		Files: []patchedFile{{Path: "a.txt", Content: []byte("x")}, {Path: "run.sh", Content: []byte("y"), Executable: true}},
+		Files: []patch.File{{Path: "a.txt", Content: []byte("x")}, {Path: "run.sh", Content: []byte("y"), Executable: true}},
 	}
 
 	calls, host, tr := fakePublishServer(t, false)
@@ -124,21 +126,5 @@ func TestPublishPR(t *testing.T) {
 	// nothing to publish
 	if _, err := publishPR(context.Background(), client, "o", "r", prPublishOptions{}); err == nil {
 		t.Error("want an error for no files")
-	}
-}
-
-func TestSevcmp(t *testing.T) {
-	order := []string{"CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"}
-	for i := range order {
-		for j := range order {
-			got := sevcmp(order[i], order[j])
-			if (i < j && got >= 0) || (i == j && got != 0) || (i > j && got <= 0) {
-				t.Errorf("sevcmp(%s, %s) = %d", order[i], order[j], got)
-			}
-		}
-	}
-	// a severity this tool does not know sorts after every known one
-	if sevcmp("HIGH", "WEIRD") >= 0 || sevcmp("WEIRD", "HIGH") <= 0 || sevcmp("WEIRD", "ODD") != 0 {
-		t.Error("unknown severities must sort last")
 	}
 }

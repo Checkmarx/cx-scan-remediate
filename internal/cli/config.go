@@ -1,8 +1,9 @@
-package main
+package cli
 
 import (
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/Checkmarx/cx-scan-remediate/internal/findings"
@@ -16,9 +17,9 @@ const maxAIFindings = 25
 // supportedEngines are the engines AI Triage and AI Remediation can act on.
 var supportedEngines = []string{"SAST", "SCA"}
 
-// parseLogLevel turns the --log-level value into a logrus level. It accepts TRACE, DEBUG, INFO,
+// ParseLogLevel turns the --log-level value into a logrus level. It accepts TRACE, DEBUG, INFO,
 // WARNING (or WARN), ERROR and FATAL in any case, ignoring surrounding whitespace.
-func parseLogLevel(s string) (logrus.Level, error) {
+func ParseLogLevel(s string) (logrus.Level, error) {
 	switch v := strings.ToUpper(strings.TrimSpace(s)); v {
 	case "TRACE":
 		return logrus.TraceLevel, nil
@@ -112,6 +113,20 @@ var flagEnv = map[string][]string{
 	"base-uri":                 {"CX_BASE_URI"},
 	"base-auth-uri":            {"CX_BASE_AUTH_URI"},
 	"tenant":                   {"CX_TENANT"},
+}
+
+// valueOrEnv returns the flag value, or the first non-empty of the environment variables when
+// the flag is empty. Values are whitespace-trimmed.
+func valueOrEnv(flagValue string, envNames ...string) string {
+	if v := strings.TrimSpace(flagValue); v != "" {
+		return v
+	}
+	for _, name := range envNames {
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // documentEnv appends each flag's environment variables to its help text.

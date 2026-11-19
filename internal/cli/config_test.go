@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -15,14 +15,14 @@ func TestParseLogLevel(t *testing.T) {
 		"warn": logrus.WarnLevel, "Warning": logrus.WarnLevel, "TRACE": logrus.TraceLevel,
 		"error": logrus.ErrorLevel, "fatal": logrus.FatalLevel,
 	} {
-		got, err := parseLogLevel(in)
+		got, err := ParseLogLevel(in)
 		if err != nil || got != want {
-			t.Errorf("parseLogLevel(%q) = %v, %v; want %v", in, got, err, want)
+			t.Errorf("ParseLogLevel(%q) = %v, %v; want %v", in, got, err, want)
 		}
 	}
 	for _, bad := range []string{"", "information", "verbose"} {
-		if _, err := parseLogLevel(bad); err == nil {
-			t.Errorf("parseLogLevel(%q): expected an error", bad)
+		if _, err := ParseLogLevel(bad); err == nil {
+			t.Errorf("ParseLogLevel(%q): expected an error", bad)
 		}
 	}
 }

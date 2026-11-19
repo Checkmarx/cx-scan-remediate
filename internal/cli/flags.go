@@ -120,27 +120,30 @@ func Parse(name, version string, args []string) (*Config, error) {
 	return c, nil
 }
 
-// Validate checks the selection and the counts before anything is sent to Checkmarx One, and
-// returns the severities and engines to process. Counts above the per-run limit are reduced to it,
-// with a warning. Every error is a usage error, worded for the log.
-func (c *Config) Validate(logger *logrus.Logger) (map[string]bool, findings.Engines, error) {
-	severities, err := findings.ParseSeverities(c.Severities)
-	if err != nil {
-		return nil, findings.Engines{}, fmt.Errorf("Invalid --severities: %w", err)
+// Selection parses --severities and --engines into the severities and engines to process.
+func (c *Config) Selection() (severities map[string]bool, engines findings.Engines, err error) {
+	if severities, err = findings.ParseSeverities(c.Severities); err != nil {
+		return nil, engines, fmt.Errorf("--severities: %w", err)
 	}
-	engines, err := parseEngines(c.Engines)
-	if err != nil {
-		return nil, findings.Engines{}, fmt.Errorf("Invalid --engines: %w", err)
-	}
-	if c.TriageCount, err = checkCount(logger, "triage-count", c.TriageCount); err != nil {
-		return nil, findings.Engines{}, err
-	}
-	if c.RemediateCount, err = checkCount(logger, "remediate-count", c.RemediateCount); err != nil {
-		return nil, findings.Engines{}, err
-	}
-	// Remediations are only ever delivered as pull requests.
-	if c.RemediateCount > 0 && c.GitHubToken == "" {
-		return nil, findings.Engines{}, errors.New("--remediate-count requires a GitHub token (--github-token or GITHUB_TOKEN) to publish pull requests")
+	if engines, err = parseEngines(c.Engines); err != nil {
+		return nil, engines, fmt.Errorf("--engines: %w", err)
 	}
 	return severities, engines, nil
+}
+
+// CheckCounts checks --triage-count and --remediate-count before anything is sent to Checkmarx
+// One. A count above the per-run limit is reduced to it, with a warning. Remediation needs a
+// GitHub token, as remediations are only ever delivered as pull requests.
+func (c *Config) CheckCounts(logger *logrus.Logger) error {
+	var err error
+	if c.TriageCount, err = checkCount(logger, "triage-count", c.TriageCount); err != nil {
+		return err
+	}
+	if c.RemediateCount, err = checkCount(logger, "remediate-count", c.RemediateCount); err != nil {
+		return err
+	}
+	if c.RemediateCount > 0 && c.GitHubToken == "" {
+		return errors.New("--remediate-count requires a GitHub token (--github-token or GITHUB_TOKEN) to publish pull requests")
+	}
+	return nil
 }

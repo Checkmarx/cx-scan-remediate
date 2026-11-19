@@ -58,7 +58,24 @@ func TestParse(t *testing.T) {
 	}
 }
 
-func TestValidate(t *testing.T) {
+func TestSelection(t *testing.T) {
+	_, c := NewFlagSet("t", "dev")
+	severities, engines, err := c.Selection()
+	if err != nil || !severities["CRITICAL"] || !severities["HIGH"] || len(severities) != 2 || !engines.SAST || !engines.SCA {
+		t.Errorf("defaults: %v %+v %v", severities, engines, err)
+	}
+
+	c.Severities = "BOGUS"
+	if _, _, err := c.Selection(); err == nil || !strings.HasPrefix(err.Error(), "--severities: ") {
+		t.Errorf("bad severity: got %v", err)
+	}
+	c.Severities, c.Engines = "HIGH", "iac"
+	if _, _, err := c.Selection(); err == nil || !strings.HasPrefix(err.Error(), "--engines: ") {
+		t.Errorf("unsupported engine: got %v", err)
+	}
+}
+
+func TestCheckCounts(t *testing.T) {
 	base := func() *Config {
 		_, c := NewFlagSet("t", "dev")
 		c.GitHubToken = "token"
@@ -67,31 +84,24 @@ func TestValidate(t *testing.T) {
 
 	c := base()
 	c.TriageCount = 1000
-	severities, engines, err := c.Validate(testutil.Logger())
-	if err != nil || !severities["CRITICAL"] || !severities["HIGH"] || len(severities) != 2 || !engines.SAST || !engines.SCA {
-		t.Errorf("defaults: %v %+v %v", severities, engines, err)
-	}
-	if c.TriageCount != maxAIFindings {
-		t.Errorf("triage count %d, want it capped at %d", c.TriageCount, maxAIFindings)
+	if err := c.CheckCounts(testutil.Logger()); err != nil || c.TriageCount != maxAIFindings {
+		t.Errorf("triage count %d (%v), want it capped at %d", c.TriageCount, err, maxAIFindings)
 	}
 
-	for name, change := range map[string]func(*Config){
-		"Invalid --severities":    func(c *Config) { c.Severities = "BOGUS" },
-		"Invalid --engines":       func(c *Config) { c.Engines = "iac" },
-		"must not be negative":    func(c *Config) { c.RemediateCount = -1 },
-		"requires a GitHub token": func(c *Config) { c.GitHubToken = "" },
-	} {
-		c := base()
-		change(c)
-		if _, _, err := c.Validate(testutil.Logger()); err == nil || !strings.Contains(err.Error(), name) {
-			t.Errorf("want an error containing %q, got %v", name, err)
-		}
+	c = base()
+	c.RemediateCount = -1
+	if err := c.CheckCounts(testutil.Logger()); err == nil || !strings.Contains(err.Error(), "must not be negative") {
+		t.Errorf("negative count: got %v", err)
+	}
+	c = base()
+	c.GitHubToken = ""
+	if err := c.CheckCounts(testutil.Logger()); err == nil || !strings.Contains(err.Error(), "requires a GitHub token") {
+		t.Errorf("no token: got %v", err)
 	}
 
 	// no token is needed when nothing is remediated
-	c = base()
-	c.GitHubToken, c.RemediateCount = "", 0
-	if _, _, err := c.Validate(testutil.Logger()); err != nil {
+	c.RemediateCount = 0
+	if err := c.CheckCounts(testutil.Logger()); err != nil {
 		t.Errorf("no remediation, no token: %v", err)
 	}
 }

@@ -107,8 +107,11 @@ func Main(ctx context.Context, version string, args []string, stdout io.Writer) 
 	}
 	logger.SetLevel(level)
 
-	severities, inScope, err := cfg.Validate(logger)
+	severities, inScope, err := cfg.Selection()
 	if err != nil {
+		return usageError(logger, "Invalid %s", err) // e.g. "Invalid --severities: unknown severity ..."
+	}
+	if err := cfg.CheckCounts(logger); err != nil {
 		return usageError(logger, "%s", err)
 	}
 

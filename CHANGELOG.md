@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial repository setup: license, code of conduct, contribution guidelines, security policy,
   maintainers/code owners, issue and pull request templates, DCO check, and Checkmarx One scan workflow.
 - The `cxscanremediate` tool and the `scan_and_check.sh` / `scan_and_check.ps1` pipeline scripts,
-  imported from the proof-of-concept repository `cx-michael-kubiaczyk/cx1-scan-remediate` at v0.0.15
+  imported from the internal `cx1-scan-remediate` proof of concept at v0.0.15
   (commit `b50b750`). Its flags, environment variables, log output and exit codes are unchanged.
 - CI (gofmt, build, vet, test) and goreleaser release workflows.
 

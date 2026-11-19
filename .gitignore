@@ -5,11 +5,15 @@ build/
 *.dll
 *.so
 *.dylib
+# the binary from "go build ./cmd/cxscanremediate" (anchored, so cmd/cxscanremediate/ is not ignored)
+/cxscanremediate
 
 # Scan / remediation artifacts produced locally
 *.sarif
 cx_result*.json
 *.log
+# Checkmarx IDE / Developer Assist local state
+.checkmarx/
 
 # IDE / editor
 .vscode/
@@ -25,3 +29,6 @@ Thumbs.db
 # Environment / secrets
 .env
 .env.*
+# local run wrappers (they hold credentials)
+/run.sh
+/run.ps1

@@ -1,0 +1,158 @@
+package cli
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/Checkmarx/cx-scan-remediate/internal/findings"
+	"github.com/sirupsen/logrus"
+)
+
+// maxAIFindings is the most findings a single run will submit to AI Triage, and the most to AI
+// Remediation, however high --triage-count or --remediate-count is set. Every one spends AI credits.
+const maxAIFindings = 25
+
+// supportedEngines are the engines AI Triage and AI Remediation can act on.
+var supportedEngines = []string{"SAST", "SCA"}
+
+// ParseLogLevel turns the --log-level value into a logrus level. It accepts TRACE, DEBUG, INFO,
+// WARNING (or WARN), ERROR and FATAL in any case, ignoring surrounding whitespace.
+func ParseLogLevel(s string) (logrus.Level, error) {
+	switch v := strings.ToUpper(strings.TrimSpace(s)); v {
+	case "TRACE":
+		return logrus.TraceLevel, nil
+	case "DEBUG":
+		return logrus.DebugLevel, nil
+	case "INFO":
+		return logrus.InfoLevel, nil
+	case "WARNING", "WARN":
+		return logrus.WarnLevel, nil
+	case "ERROR":
+		return logrus.ErrorLevel, nil
+	case "FATAL":
+		return logrus.FatalLevel, nil
+	default:
+		return logrus.InfoLevel, fmt.Errorf("unknown log level %q, expected one of TRACE, DEBUG, INFO, WARNING, ERROR, FATAL", s)
+	}
+}
+
+// parseEngines turns the -engine list (case-insensitive, whitespace-tolerant) into the engines
+// to process. Unknown or unsupported engines are an error, so a typo can't silently drop one.
+func parseEngines(list string) (findings.Engines, error) {
+	var in findings.Engines
+	seen := 0
+	for e := range strings.SplitSeq(list, ",") {
+		e = strings.ToUpper(strings.TrimSpace(e))
+		switch e {
+		case "":
+			continue
+		case "SAST":
+			in.SAST = true
+		case "SCA":
+			in.SCA = true
+		case "IAC", "KICS":
+			return in, fmt.Errorf("engine %q is not supported by AI Triage/Remediation yet; supported: %s", e, strings.Join(supportedEngines, ","))
+		default:
+			return in, fmt.Errorf("unknown engine %q, expected any of %s", e, strings.Join(supportedEngines, ","))
+		}
+		seen++
+	}
+	if seen == 0 {
+		return in, fmt.Errorf("no engines specified, expected any of %s", strings.Join(supportedEngines, ","))
+	}
+	return in, nil
+}
+
+// checkCount validates a -triage or -remediate value: negative is an error, and more than
+// maxAIFindings is reduced to it with a warning.
+func checkCount(logger *logrus.Logger, name string, n int) (int, error) {
+	if n < 0 {
+		return 0, fmt.Errorf("--%s must not be negative (got %d)", name, n)
+	}
+	if n > maxAIFindings {
+		logger.Warnf("--%s capped at %d per run (requested %d) to protect AI credits", name, maxAIFindings, n)
+		return maxAIFindings, nil
+	}
+	return n, nil
+}
+
+// flagEnv lists, for each flag, the environment variables it falls back to when the flag is not
+// given (the first one that is set wins). Every flag except --access-token (short-lived) has one,
+// so a pipeline can configure the tool without a command line. The Checkmarx One ones are the
+// names the AST CLI reads too.
+var flagEnv = map[string][]string{
+	"log-level":                {"CXSR_LOG_LEVEL"},
+	"report-file":              {"CXSR_REPORT_FILE"},
+	"source-dir":               {"CXSR_SOURCE_DIR"},
+	"engines":                  {"CXSR_ENGINES"},
+	"severities":               {"CXSR_SEVERITIES"},
+	"triage-count":             {"CXSR_TRIAGE_COUNT"},
+	"remediate-count":          {"CXSR_REMEDIATE_COUNT"},
+	"triage-batch-size":        {"CXSR_TRIAGE_BATCH_SIZE"},
+	"remediation-batch-size":   {"CXSR_REMEDIATION_BATCH_SIZE"},
+	"timeout":                  {"CXSR_TIMEOUT"},
+	"ai-poll-interval":         {"CXSR_AI_POLL_INTERVAL"},
+	"ai-poll-timeout":          {"CXSR_AI_POLL_TIMEOUT"},
+	"ai-details-poll-interval": {"CXSR_AI_DETAILS_POLL_INTERVAL"},
+	"ai-details-poll-timeout":  {"CXSR_AI_DETAILS_POLL_TIMEOUT"},
+	"github-token":             {"GITHUB_TOKEN"},
+	"repo":                     {"CXSR_REPO"},
+	"base-branch":              {"CXSR_BASE_BRANCH"},
+	"pr-branch":                {"CXSR_PR_BRANCH"},
+	"proxy":                    {"CXSR_PROXY"},
+	"insecure":                 {"CXSR_INSECURE"},
+	"ca-cert":                  {"CXSR_CA_CERT"},
+	"no-keep-alive":            {"CXSR_NO_KEEP_ALIVE"},
+	"keep-temp":                {"CXSR_KEEP_TEMP"},
+	"user-agent":               {"CXSR_USER_AGENT"},
+	"apikey":                   {"CX_APIKEY"},
+	"client-id":                {"CX_CLIENT_ID"},
+	"client-secret":            {"CX_CLIENT_SECRET"},
+	"base-uri":                 {"CX_BASE_URI"},
+	"base-auth-uri":            {"CX_BASE_AUTH_URI"},
+	"tenant":                   {"CX_TENANT"},
+}
+
+// valueOrEnv returns the flag value, or the first non-empty of the environment variables when
+// the flag is empty. Values are whitespace-trimmed.
+func valueOrEnv(flagValue string, envNames ...string) string {
+	if v := strings.TrimSpace(flagValue); v != "" {
+		return v
+	}
+	for _, name := range envNames {
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// documentEnv appends each flag's environment variables to its help text.
+func documentEnv(fs *flag.FlagSet) {
+	fs.VisitAll(func(f *flag.Flag) {
+		if names := flagEnv[f.Name]; len(names) > 0 {
+			f.Usage += " [env: " + strings.Join(names, ", ") + "]"
+		}
+	})
+}
+
+// applyEnvDefaults sets every flag that was not given on the command line from its environment
+// variable, if that is set and not blank. A flag given on the command line always wins. It must
+// run after fs.Parse.
+func applyEnvDefaults(fs *flag.FlagSet) error {
+	given := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	for name, envs := range flagEnv {
+		if given[name] {
+			continue
+		}
+		if v := valueOrEnv("", envs...); v != "" {
+			if err := fs.Set(name, v); err != nil {
+				return fmt.Errorf("invalid value %q in %s for --%s: %w", v, strings.Join(envs, "/"), name, err)
+			}
+		}
+	}
+	return nil
+}

@@ -1,0 +1,40 @@
+version: 2
+
+project_name: cxscanremediate
+
+builds:
+  - id: linux
+    main: ./cmd/cxscanremediate
+    goos: [linux]
+    goarch: [amd64, arm64]
+    binary: cxscanremediate
+    env:
+      - CGO_ENABLED=0
+  - id: windows
+    main: ./cmd/cxscanremediate
+    goos: [windows]
+    goarch: [amd64]
+    binary: cxscanremediate
+    env:
+      - CGO_ENABLED=0
+
+archives:
+  - id: zips
+    formats: [zip]
+    ids: [linux, windows]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+  # Raw binaries named cxscanremediate_<os>_<arch> (".exe" is appended on Windows); these are
+  # what scan_and_check.sh downloads, after detecting the platform
+  - id: bin
+    formats: [binary]
+    ids: [linux, windows]
+    name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  # Attach the CI helper script to the release alongside the binaries
+  extra_files:
+    - glob: ./scan_and_check.sh
+    - glob: ./scan_and_check.ps1

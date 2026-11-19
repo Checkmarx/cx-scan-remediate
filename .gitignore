@@ -29,3 +29,6 @@ Thumbs.db
 # Environment / secrets
 .env
 .env.*
+# local run wrappers (they hold credentials)
+/run.sh
+/run.ps1
